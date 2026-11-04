@@ -1,0 +1,6 @@
+{
+  "name": "TAREK STOR - متجر الألعاب الرقمية والعتاد المادي (CJ Dropshipping)",
+  "description": "منصة متكاملة للمنتجات الرقمية وشحن الألعاب مع متجر عتاد واكسسوارات الألعاب المادية المرتبط بدروب شيبينج CJ، لوحة تحكم الإدمن، وتعيين المساعدين وخدمة العملاء وتسجيل الدخول عبر Google وتيليجرام.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
