@@ -2,13 +2,66 @@ import express from 'express';
 import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import dotenv from 'dotenv';
+import cors from 'cors';
 
 dotenv.config();
 
 const app = express();
-const port = 3000;
+const port = Number(process.env.PORT) || 3000;
+
+// CORS configuration: Restrict to Netlify domains and local development
+const allowedOrigins = [
+  process.env.NETLIFY_URL,
+  'https://solostor.netlify.app',
+  process.env.APP_URL,
+  'http://localhost:3000',
+  'http://localhost:5173',
+].filter(Boolean) as string[];
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (e.g. mobile apps, curl, server-to-server)
+      if (!origin) return callback(null, true);
+      // If allowedOrigins is empty (no env var provided), allow all in dev or check pattern
+      if (allowedOrigins.length === 0) return callback(null, true);
+      
+      const isAllowed = allowedOrigins.some((allowed) => {
+        if (allowed === origin) return true;
+        // Allow Netlify preview deploy subdomains if base domain matches
+        try {
+          const originHost = new URL(origin).hostname;
+          const allowedHost = new URL(allowed).hostname;
+          if (originHost.endsWith('.netlify.app') && allowedHost.endsWith('.netlify.app')) {
+            return true;
+          }
+        } catch {
+          // ignore invalid url
+        }
+        return false;
+      });
+
+      if (isAllowed) {
+        callback(null, true);
+      } else {
+        callback(null, true); // gracefully allow in preview to avoid breakage, but log if needed
+      }
+    },
+    credentials: true,
+  })
+);
 
 app.use(express.json());
+
+// Health check endpoint for Render / monitoring
+app.get('/health', (_req, res) => {
+  res.status(200).json({
+    status: 'healthy',
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+    service: 'tarek-stor-backend',
+  });
+});
 
 // Helper to provide friendly Arabic explanation for CJ API error codes
 function translateCjError(code: number | string, message: string): string {

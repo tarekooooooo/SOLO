@@ -26,6 +26,7 @@ import {
   Compass,
   ArrowRight
 } from 'lucide-react';
+import { getApiUrl } from '../../config/api';
 
 export const ApiSettingsModal: React.FC = () => {
   const { 
@@ -103,7 +104,7 @@ export const ApiSettingsModal: React.FC = () => {
     setIsSearchingCj(true);
     setSearchCjError(null);
     try {
-      const res = await fetch('/api/cj/product-search', {
+      const res = await fetch(getApiUrl('/api/cj/product-search'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ apiKey: cjApiKey, keyword: searchKeyword || 'mouse' }),

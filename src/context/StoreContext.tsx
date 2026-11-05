@@ -31,6 +31,7 @@ import {
   INITIAL_PHYSICAL_PRODUCTS,
   INITIAL_PHYSICAL_ORDERS
 } from '../data/mockData';
+import { getApiUrl } from '../config/api';
 
 interface StoreContextType {
   // Navigation & View
@@ -610,7 +611,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const keyToTest = customKey || apiConfig.cjApiKey;
     showToast('جاري فحص الاتصال بسيرفرات CJ Dropshipping والتحقق من المفتاح...');
     try {
-      const res = await fetch('/api/cj/verify', {
+      const res = await fetch(getApiUrl('/api/cj/verify'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -643,7 +644,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     showToast(`جاري إرسال طلب شراء تجريبي وفحص استجابة CJ (كود SKU: ${targetSku})...`);
 
     try {
-      const res = await fetch('/api/cj/test-order', {
+      const res = await fetch(getApiUrl('/api/cj/test-order'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -728,7 +729,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const key = customKey || apiConfig.cjApiKey;
     showToast('جاري سحب واستعلام الطلبات الحقيقية من حسابك في موقع CJ Dropshipping...');
     try {
-      const res = await fetch('/api/cj/orders-list', {
+      const res = await fetch(getApiUrl('/api/cj/orders-list'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ apiKey: key }),
