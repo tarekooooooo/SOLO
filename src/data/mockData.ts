@@ -521,13 +521,12 @@ export const INITIAL_SUPPORT_TICKETS: SupportTicket[] = [
 ];
 
 export const DEFAULT_API_CONFIG: ApiIntegrationsConfig = {
-  cjApiKey: 'cjp_live_948f2038bcae490192834bfae',
   cjAccountEmail: 'tarekai042@gmail.com',
   cjAppId: 'CJ-STORE-86628',
-  cjConnected: true,
+  cjConnected: false,
   googleClientId: '60028700364-game-store.apps.googleusercontent.com',
   telegramBotUsername: '@TarekStoreBot',
-  autoFulfillWithCJ: true,
+  autoFulfillWithCJ: false,
   defaultMarkupPercent: 35,
 };
 

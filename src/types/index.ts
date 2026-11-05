@@ -31,7 +31,6 @@ export interface AuthUser {
 }
 
 export interface ApiIntegrationsConfig {
-  cjApiKey: string;
   cjAccountEmail: string;
   cjAppId: string;
   cjConnected: boolean;

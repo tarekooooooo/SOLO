@@ -111,9 +111,9 @@ interface StoreContextType {
   // API Integrations (CJ Dropshipping, Google, Telegram)
   apiConfig: ApiIntegrationsConfig;
   updateApiConfig: (updates: Partial<ApiIntegrationsConfig>) => void;
-  testCjConnection: (customKey?: string) => Promise<{ success: boolean; message: string; latencyMs?: number; data?: any }>;
+  testCjConnection: () => Promise<{ success: boolean; message: string; latencyMs?: number; data?: any }>;
   executeCjTestPurchase: (product?: PhysicalProduct, customSku?: string) => Promise<{ success: boolean; order?: PhysicalOrder; message?: string; latencyMs: number; log: any }>;
-  fetchRealCjOrders: (customKey?: string) => Promise<{ success: boolean; orders: any[]; message: string; latencyMs?: number }>;
+  fetchRealCjOrders: () => Promise<{ success: boolean; orders: any[]; message: string; latencyMs?: number }>;
   isApiModalOpen: boolean;
   setIsApiModalOpen: (open: boolean) => void;
 
@@ -182,8 +182,15 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // API Config (CJ Dropshipping, Google, Telegram with localStorage persistence)
   const [apiConfig, setApiConfigState] = useState<ApiIntegrationsConfig>(() => {
     try {
-      const saved = localStorage.getItem('tarek_store_api_config');
-      if (saved) return JSON.parse(saved);
+      const storageKey = 'tarek_store_api_config';
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved) as Partial<ApiIntegrationsConfig> & { cjApiKey?: string };
+        if ('cjApiKey' in parsed) delete parsed.cjApiKey;
+        const sanitized = { ...DEFAULT_API_CONFIG, ...parsed, cjConnected: false, autoFulfillWithCJ: false };
+        localStorage.setItem(storageKey, JSON.stringify(sanitized));
+        return sanitized;
+      }
     } catch {
       // ignore
     }
@@ -596,7 +603,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // API Configuration Handlers
   const updateApiConfig = (updates: Partial<ApiIntegrationsConfig>) => {
     setApiConfigState((prev) => {
-      const next = { ...prev, ...updates };
+      const next = { ...prev, ...updates, autoFulfillWithCJ: false };
       try {
         localStorage.setItem('tarek_store_api_config', JSON.stringify(next));
       } catch (e) {
@@ -604,7 +611,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       }
       return next;
     });
-    showToast('تم حفظ إعدادات ومفاتيح الربط بنجاح 🔑');
+    showToast('تم حفظ إعدادات الربط. مفاتيح الخادم لا تُحفظ في المتصفح.');
   };
 
   const testCjConnection = async (): Promise<{ success: boolean; message: string; latencyMs?: number; data?: any }> => {
@@ -624,11 +631,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         showToast(`⚠️ ${data.message}`);
         return data;
       }
-    } catch {
-      await new Promise((r) => setTimeout(r, 400));
-      updateApiConfig({ cjConnected: true });
-      showToast('✅ تم فحص الاتصال الآمن بسيرفر CJ بنجاح!');
-      return { success: true, message: 'الاتصال آمن ومضبوط على السيرفر', latencyMs: 50 };
+    } catch (err: unknown) {
+      updateApiConfig({ cjConnected: false });
+      const message = err instanceof Error ? err.message : 'تعذر الاتصال بوظيفة CJ.';
+      showToast(`⚠️ لم يتم التحقق من اتصال CJ: ${message}`);
+      return { success: false, message };
     }
   };
 
@@ -685,10 +692,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       const res = await fetch(getFunctionUrl('cj-orders-list'), {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('supabase_auth_token') || ''}`,
-        },
+        headers: { 'Content-Type': 'application/json' },
       });
       const data = await res.json();
       if (data.success) {

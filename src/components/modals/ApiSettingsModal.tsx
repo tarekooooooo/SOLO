@@ -57,41 +57,36 @@ export const ApiSettingsModal: React.FC = () => {
   const [searchCjError, setSearchCjError] = useState<string | null>(null);
 
   // Local form states
-  const [cjApiKey, setCjApiKey] = useState(apiConfig.cjApiKey);
   const [cjAccountEmail, setCjAccountEmail] = useState(apiConfig.cjAccountEmail);
   const [cjAppId, setCjAppId] = useState(apiConfig.cjAppId);
   const [googleClientId, setGoogleClientId] = useState(apiConfig.googleClientId);
   const [telegramBotUsername, setTelegramBotUsername] = useState(apiConfig.telegramBotUsername);
-  const [autoFulfill, setAutoFulfill] = useState(apiConfig.autoFulfillWithCJ);
   const [markupPercent, setMarkupPercent] = useState(apiConfig.defaultMarkupPercent);
 
   if (!isApiModalOpen) return null;
 
   const handleSave = () => {
     updateApiConfig({
-      cjApiKey,
       cjAccountEmail,
       cjAppId,
       googleClientId,
       telegramBotUsername,
-      autoFulfillWithCJ: autoFulfill,
       defaultMarkupPercent: markupPercent,
     });
-    showToast('تم حفظ المفاتيح والإعدادات بنجاح!');
+    showToast('تم حفظ إعدادات الربط الآمنة.');
     setIsApiModalOpen(false);
   };
 
   const handleTestCj = async () => {
     setIsTestingCj(true);
-    updateApiConfig({ cjApiKey, cjAccountEmail, cjAppId });
-    await testCjConnection(cjApiKey);
+    updateApiConfig({ cjAccountEmail, cjAppId });
+    await testCjConnection();
     setIsTestingCj(false);
   };
 
   const handleFetchRealOrders = async () => {
     setIsFetchingRealOrders(true);
-    updateApiConfig({ cjApiKey, cjAccountEmail, cjAppId });
-    const res = await fetchRealCjOrders(cjApiKey);
+    const res = await fetchRealCjOrders();
     setRealCjOrdersResult(res);
     setIsFetchingRealOrders(false);
   };
@@ -122,7 +117,6 @@ export const ApiSettingsModal: React.FC = () => {
 
   const handleRunTestOrder = async () => {
     setIsTestingOrder(true);
-    updateApiConfig({ cjApiKey, cjAccountEmail, cjAppId });
     const res = await executeCjTestPurchase(undefined, customSkuInput);
     setTestOrderResult(res);
     setIsTestingOrder(false);
@@ -147,13 +141,13 @@ export const ApiSettingsModal: React.FC = () => {
             </div>
             <div>
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                لوحة مفاتيح الربط والتكامل (API Keys)
+                إعدادات الربط والتكامل
                 <span className="text-xs px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
                   CJ & Google & Telegram
                 </span>
               </h2>
               <p className="text-xs text-slate-400">
-                أدخل مفاتيح الربط لتشغيل متجر المنتجات المادية وتسجيل الدخول الاجتماعي
+                مفاتيح الخادم السرية تُضبط على الخادم فقط ولا تُحفظ في المتصفح
               </p>
             </div>
           </div>
@@ -235,21 +229,9 @@ export const ApiSettingsModal: React.FC = () => {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1.5 md:col-span-2">
-                  <div className="flex items-center justify-between text-xs text-slate-300">
-                    <label className="font-semibold text-slate-200 flex items-center gap-1.5">
-                      <Key className="w-3.5 h-3.5 text-cyan-400" />
-                      CJ API Key (Access Token)
-                    </label>
-                    <span className="text-[11px] text-cyan-400/80">مطلوب من حساب CJ Developers</span>
-                  </div>
-                  <input
-                    type="password"
-                    value={cjApiKey}
-                    onChange={(e) => setCjApiKey(e.target.value)}
-                    placeholder="cjp_live_xxxxxxxxxxxxxxxxxxxxxxxxxx"
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 focus:border-cyan-500 focus:outline-none text-white text-sm font-mono tracking-wider"
-                  />
+                <div className="md:col-span-2 flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/5 p-3.5 text-xs leading-relaxed text-slate-300">
+                  <Key className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+                  <span>لأمان المتجر، لا تُدخل مفتاح CJ هنا ولا تحفظه في المتصفح. يُضبط المفتاح على الخادم فقط ضمن Supabase Edge Function Secrets بالاسم <code className="font-mono text-amber-300">CJ_ACCESS_TOKEN</code>.</span>
                 </div>
 
                 <div className="space-y-1.5">
@@ -297,20 +279,8 @@ export const ApiSettingsModal: React.FC = () => {
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between p-3.5 rounded-xl bg-slate-900/70 border border-slate-800">
-                  <div>
-                    <div className="text-xs font-bold text-white">إرسال الطلبات آلياً إلى CJ فور دفع العميل</div>
-                    <div className="text-[11px] text-slate-400">توليد بوليصة الشحن وتحديث رقم التتبع بدون تدخل يدوي</div>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={autoFulfill}
-                      onChange={(e) => setAutoFulfill(e.target.checked)}
-                      className="sr-only peer"
-                    />
-                    <div className="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:right-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-cyan-500"></div>
-                  </label>
+                <div className="md:col-span-2 rounded-xl border border-amber-500/30 bg-amber-500/5 p-3.5 text-xs leading-relaxed text-amber-100">
+                  الإرسال الآلي إلى CJ غير مفعّل بعد. لن نرسل طلبات إلى المورد قبل ربط بوابة دفع موثوقة والتحقق من الدفع على الخادم.
                 </div>
               </div>
 
@@ -320,12 +290,7 @@ export const ApiSettingsModal: React.FC = () => {
                   <div className={`w-3.5 h-3.5 rounded-full ${apiConfig.cjConnected ? 'bg-emerald-400 shadow-[0_0_10px_#10b981]' : 'bg-amber-400'}`} />
                   <div>
                     <div className="text-xs font-bold text-white flex items-center gap-2">
-                      <span>{apiConfig.cjConnected ? 'الاتصال بخوادم CJ متصل ومصادق عليه 🟢' : 'بانتظار التحقق من مفتاح API 🟡'}</span>
-                      {apiConfig.cjApiKey && (
-                        <span className="font-mono text-[10px] text-cyan-400 px-2 py-0.5 rounded bg-slate-800">
-                          {apiConfig.cjApiKey.slice(0, 10)}...
-                        </span>
-                      )}
+                      <span>{apiConfig.cjConnected ? 'تم التحقق من اتصال CJ 🟢' : 'لم يتم التحقق من اتصال CJ بعد 🟡'}</span>
                     </div>
                     <div className="text-[11px] text-slate-400">
                       مستودعات الشحن: الصين، السعودية، الإمارات، وأوروبا (CJ Packet Line)
@@ -341,7 +306,7 @@ export const ApiSettingsModal: React.FC = () => {
                     className="px-4 py-2 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 text-xs font-bold flex items-center justify-center gap-2 transition-all"
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${isTestingCj ? 'animate-spin' : ''}`} />
-                    <span>{isTestingCj ? 'جاري الفحص المباشر...' : '1. فحص وتأكيد المفتاح'}</span>
+                    <span>{isTestingCj ? 'جاري الفحص المباشر...' : '1. فحص اتصال CJ'}</span>
                   </button>
 
                   <button

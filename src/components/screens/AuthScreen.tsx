@@ -315,14 +315,14 @@ export const AuthScreen: React.FC = () => {
             </div>
             <div className="p-2 rounded-xl bg-black/40 border border-slate-800 flex items-center justify-between">
               <span className="text-slate-400">CJ API:</span>
-              <span className={apiConfig.cjConnected ? 'text-emerald-400 font-bold' : apiConfig.cjApiKey ? 'text-cyan-400' : 'text-slate-500'}>
-                {apiConfig.cjConnected ? 'متصل 🟢' : apiConfig.cjApiKey ? 'محفوظ 🔑' : 'غير مدخل'}
+              <span className={apiConfig.cjConnected ? 'text-emerald-400 font-bold' : 'text-slate-500'}>
+                {apiConfig.cjConnected ? 'تم التحقق 🟢' : 'غير متحقق'}
               </span>
             </div>
           </div>
 
           <p className="text-[11px] text-slate-400 leading-relaxed">
-            تم حفظ مفاتيحك بنجاح. يمكنك تحديثها أو إجراء فحص مباشر لاتصال CJ في أي وقت عبر زر إدارة المفاتيح.
+            مفاتيح التكامل السرية لا تُحفظ في المتصفح؛ تُدار على الخادم فقط.
           </p>
         </div>
       </div>
