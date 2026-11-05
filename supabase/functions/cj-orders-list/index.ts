@@ -1,15 +1,56 @@
 // Supabase Edge Function: cj-orders-list
-// Fetches merchant's actual CJ orders list securely using server secret CJ_ACCESS_TOKEN.
+// RESTRICTED TO ADMIN USERS ONLY:
+// 1. Verifies caller JWT from Authorization header.
+// 2. Checks caller role in public.profiles table (must be 'admin').
+// 3. Reads CJ_ACCESS_TOKEN strictly from server secrets (never accepts from client).
 
 import { corsHeaders } from '../_shared/cors.ts';
+import { createClient } from 'jsr:@supabase/supabase-js@2';
 
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
-  const cjToken = Deno.env.get('CJ_ACCESS_TOKEN')?.trim();
+  const authHeader = req.headers.get('Authorization');
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return new Response(
+      JSON.stringify({ error: 'غير مصرح: يجب تسجيل الدخول كمدير نظام للوصول إلى طلبات CJ' }),
+      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
 
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+  const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+  const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+  // 1. Verify user session
+  const token = authHeader.replace('Bearer ', '');
+  const { data: { user }, error: authErr } = await supabase.auth.getUser(token);
+
+  if (authErr || !user) {
+    return new Response(
+      JSON.stringify({ error: 'رمز الجلسة غير صالح' }),
+      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
+  // 2. Verify admin role on server from profiles table
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single();
+
+  if (profile?.role !== 'admin') {
+    return new Response(
+      JSON.stringify({ error: 'محظور: هذه العملية تتطلب صلاحية مدير النظام (Admin Only)' }),
+      { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
+  // 3. Read CJ Token strictly from server secrets
+  const cjToken = Deno.env.get('CJ_ACCESS_TOKEN')?.trim();
   if (!cjToken) {
     return new Response(
       JSON.stringify({
@@ -41,7 +82,7 @@ Deno.serve(async (req: Request) => {
           success: true,
           ordersCount: orders.length,
           orders,
-          message: `تم جلب ${orders.length} طلب مباشرة من حساب CJ`,
+          message: `تم استرجاع ${orders.length} طلب بنجاح من حساب CJ`,
         }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );

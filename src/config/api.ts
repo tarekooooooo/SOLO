@@ -1,16 +1,32 @@
 /**
- * Centralized API configuration for TAREK STOR.
- * In production on Netlify, requests will route to the Express backend hosted on Render
- * via the VITE_API_BASE_URL environment variable.
- * In development, it falls back to the current window origin or empty string (relative path).
+ * Centralized API & Supabase Edge Functions configuration for TAREK STOR / SOLO STOR.
+ * Frontend on Netlify invokes Supabase Edge Functions directly or via relative proxy in dev.
+ * All sensitive keys (CJ_ACCESS_TOKEN, payment secrets) reside strictly in Supabase Server Secrets.
  */
-export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
+
+export const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL || '').replace(/\/$/, '');
+export const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+
+// Edge Functions endpoint URL
+export const FUNCTIONS_BASE_URL = (
+  import.meta.env.VITE_SUPABASE_FUNCTIONS_URL || 
+  (SUPABASE_URL ? `${SUPABASE_URL}/functions/v1` : '')
+).replace(/\/$/, '');
 
 /**
- * Helper to build full API endpoint URL
- * @param endpoint Relative API endpoint (e.g. '/api/cj/verify')
+ * Returns the URL for invoking a Supabase Edge Function
+ * In local dev without Supabase deployed, falls back to local relative path
  */
-export function getApiUrl(endpoint: string): string {
-  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
-  return `${API_BASE_URL}${cleanEndpoint}`;
+export function getFunctionUrl(functionName: string): string {
+  if (FUNCTIONS_BASE_URL) {
+    return `${FUNCTIONS_BASE_URL}/${functionName}`;
+  }
+  // Local fallback mapping
+  const localMap: Record<string, string> = {
+    'cj-verify': '/api/cj/verify',
+    'cj-orders-list': '/api/cj/orders-list',
+    'cj-catalog-search': '/api/cj/product-search',
+    'create-order': '/api/orders/create',
+  };
+  return localMap[functionName] || `/api/${functionName}`;
 }

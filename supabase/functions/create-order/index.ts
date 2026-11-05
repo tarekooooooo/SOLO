@@ -1,6 +1,11 @@
 // Supabase Edge Function: create-order
-// Creates a pending order in Supabase with idempotency check.
-// Does NOT send to CJ Dropshipping or fulfill digital codes until payment webhook is confirmed.
+// Authenticated endpoint:
+// 1. Verifies caller identity strictly via Supabase JWT (Authorization header).
+// 2. Extracts authenticated customer_id from auth.getUser() - never trusts client payload.
+// 3. Requires mandatory, non-empty idempotencyKey.
+// 4. Calls atomic RPC create_order_atomic in database which validates genuine product prices,
+//    availability, and stock on the server and commits in a single transaction.
+// 5. Does NOT set order as paid or call CJ Dropshipping.
 
 import { corsHeaders } from '../_shared/cors.ts';
 import { createClient } from 'jsr:@supabase/supabase-js@2';
@@ -17,121 +22,91 @@ Deno.serve(async (req: Request) => {
     });
   }
 
+  const authHeader = req.headers.get('Authorization');
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return new Response(
+      JSON.stringify({ error: 'غير مصرح: يجب تسجيل الدخول وإرسال رمز المصادقة (Bearer Token)' }),
+      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+  const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+
+  // Client bound to caller's JWT
+  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+    global: { headers: { Authorization: authHeader } },
+  });
+
+  // Verify token and extract verified user id from session
+  const { data: { user }, error: authErr } = await supabase.auth.getUser();
+  if (authErr || !user) {
+    return new Response(
+      JSON.stringify({ error: 'جلسة تسجيل الدخول غير صالحة أو منتهية' }),
+      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+  }
+
   try {
     const body = await req.json();
     const {
-      customerId,
-      customerName,
-      customerEmail,
-      customerPhone,
-      items,
-      shippingAddress,
       idempotencyKey,
+      customerName,
+      customerPhone,
       deliveryType,
       targetPlayerId,
       targetPlayerName,
+      shippingAddress,
+      items,
     } = body;
 
-    if (!customerEmail || !items || !Array.isArray(items) || items.length === 0) {
+    // Enforce mandatory idempotency key
+    if (!idempotencyKey || typeof idempotencyKey !== 'string' || idempotencyKey.trim().length < 8) {
       return new Response(
-        JSON.stringify({ error: 'البريد الإلكتروني وتفاصيل المنتجات مطلوبة' }),
+        JSON.stringify({ error: 'مفتاح عدم التكرار (idempotencyKey) إلزامي وفريد بطول 8 محارف على الأقل' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-    // 1. Idempotency Check: prevent duplicate orders
-    if (idempotencyKey) {
-      const { data: existingOrder } = await supabase
-        .from('orders')
-        .select('*')
-        .eq('idempotency_key', idempotencyKey)
-        .maybeSingle();
-
-      if (existingOrder) {
-        return new Response(
-          JSON.stringify({
-            message: 'طلب مكرر تم إنشاؤه مسبقاً',
-            order: existingOrder,
-            isDuplicate: true,
-          }),
-          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return new Response(
+        JSON.stringify({ error: 'يجب اختيار منتج واحد على الأقل لإتمام الطلب' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    // 2. Calculate totals securely on server (not trusting client sum)
-    let subtotalUSD = 0;
-    for (const item of items) {
-      const unitPrice = Number(item.unitPriceUSD) || 0;
-      const qty = Math.max(1, Number(item.quantity) || 1);
-      subtotalUSD += unitPrice * qty;
+    // Call atomic RPC: executes under caller's context with server-side pricing & idempotency
+    const { data: result, error: rpcErr } = await supabase.rpc('create_order_atomic', {
+      p_idempotency_key: idempotencyKey.trim(),
+      p_customer_name: customerName || user.user_metadata?.name || 'العميل',
+      p_customer_phone: customerPhone || null,
+      p_delivery_type: deliveryType || 'instant_code',
+      p_target_player_id: targetPlayerId || null,
+      p_target_player_name: targetPlayerName || null,
+      p_shipping_address: shippingAddress || null,
+      p_items: items.map((it: any) => ({
+        product_id: it.productId,
+        quantity: Math.max(1, parseInt(it.quantity, 10) || 1),
+        package_or_variant: it.variant || it.package || null,
+      })),
+    });
+
+    if (rpcErr) {
+      return new Response(
+        JSON.stringify({ error: rpcErr.message }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
-
-    const shippingFeeUSD = deliveryType === 'physical_shipment' ? 6.50 : 0.00;
-    const totalUSD = subtotalUSD + shippingFeeUSD;
-    const orderNumber = `TRK-${Date.now().toString().slice(-6)}`;
-
-    // 3. Insert order record (Status: PENDING payment)
-    const { data: order, error: orderErr } = await supabase
-      .from('orders')
-      .insert({
-        order_number: orderNumber,
-        customer_id: customerId || null,
-        customer_name: customerName || 'عميل المتجر',
-        customer_email: customerEmail,
-        customer_phone: customerPhone || null,
-        subtotal_usd: subtotalUSD,
-        shipping_fee_usd: shippingFeeUSD,
-        total_usd: totalUSD,
-        status: 'pending',
-        payment_status: 'pending',
-        delivery_type: deliveryType || 'instant_code',
-        target_player_id: targetPlayerId || null,
-        target_player_name: targetPlayerName || null,
-        shipping_address: shippingAddress || null,
-        idempotency_key: idempotencyKey || null,
-      })
-      .select()
-      .single();
-
-    if (orderErr) {
-      return new Response(JSON.stringify({ error: orderErr.message }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    // 4. Insert order items
-    const orderItemsToInsert = items.map((it: any) => ({
-      order_id: order.id,
-      product_id: it.productId || null,
-      product_title: it.productTitle || 'منتج',
-      package_or_variant: it.variant || it.package || null,
-      cj_sku: it.cjSku || null,
-      unit_price_usd: Number(it.unitPriceUSD) || 0,
-      quantity: Math.max(1, Number(it.quantity) || 1),
-      total_price_usd: (Number(it.unitPriceUSD) || 0) * Math.max(1, Number(it.quantity) || 1),
-    }));
-
-    await supabase.from('order_items').insert(orderItemsToInsert);
 
     return new Response(
-      JSON.stringify({
-        success: true,
-        message: 'تم تسجيل الطلب بنجاح وهو بانتظار إتمام الدفع',
-        order,
-      }),
-      { status: 201, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      JSON.stringify(result),
+      { status: result.is_duplicate ? 200 : 201, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : String(err);
-    return new Response(JSON.stringify({ error: errorMsg }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    return new Response(
+      JSON.stringify({ error: `فشل معالجة الطلب: ${errorMsg}` }),
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
   }
 });

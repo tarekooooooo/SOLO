@@ -26,7 +26,7 @@ import {
   Compass,
   ArrowRight
 } from 'lucide-react';
-import { getApiUrl } from '../../config/api';
+import { getFunctionUrl } from '../../config/api';
 
 export const ApiSettingsModal: React.FC = () => {
   const { 
@@ -97,17 +97,13 @@ export const ApiSettingsModal: React.FC = () => {
   };
 
   const handleSearchCjProducts = async () => {
-    if (!cjApiKey || cjApiKey.trim() === '') {
-      showToast('يرجى إدخال مفتاح CJ API أولاً للبحث في الكتالوج');
-      return;
-    }
     setIsSearchingCj(true);
     setSearchCjError(null);
     try {
-      const res = await fetch(getApiUrl('/api/cj/product-search'), {
+      const res = await fetch(getFunctionUrl('cj-catalog-search'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiKey: cjApiKey, keyword: searchKeyword || 'mouse' }),
+        body: JSON.stringify({ keyword: searchKeyword || 'mouse' }),
       });
       const data = await res.json();
       if (data.success && data.products) {
