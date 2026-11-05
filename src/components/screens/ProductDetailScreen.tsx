@@ -10,10 +10,17 @@ import {
   User, 
   Layers, 
   Flame,
-  Info
+  Info,
+  CreditCard,
+  Smartphone,
+  Coins,
+  Building2,
+  Sparkles,
+  AlertCircle,
+  Wallet
 } from 'lucide-react';
 import { useStore } from '../../context/StoreContext';
-import { Product, ProductPackage } from '../../types';
+import { Product, ProductPackage, PaymentMethod } from '../../types';
 
 export const ProductDetailScreen: React.FC = () => {
   const { 
@@ -36,7 +43,11 @@ export const ProductDetailScreen: React.FC = () => {
   const [isVerifyingId, setIsVerifyingId] = useState(false);
   const [idVerified, setIdVerified] = useState(true);
 
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('wallet');
+  const [paymentReference, setPaymentReference] = useState('');
+
   const isDirectRecharge = product.deliveryType === 'direct_id_recharge';
+  const isManualPayment = ['libyana', 'almadar', 'bank_transfer', 'payoneer'].includes(paymentMethod);
 
   const handleVerifyPlayerId = () => {
     if (!playerId) return;
@@ -55,13 +66,26 @@ export const ProductDetailScreen: React.FC = () => {
       return;
     }
 
-    // Check balance
     const cost = selectedPackage.priceUSD;
-    if (customerBalanceUSD < cost) {
-      showToast('رصيدك في المحفظة غير كافٍ. يمكنك شحن المحفظة أولاً من شاشة المحفظة.');
-      setActiveScreen('wallet');
+
+    if (paymentMethod === 'wallet' && customerBalanceUSD < cost) {
+      showToast('رصيدك في المحفظة غير كافٍ. يمكنك استخدام الدفع اليدوي أو شحن المحفظة.');
       return;
     }
+
+    if (isManualPayment && !paymentReference.trim()) {
+      showToast('يرجى إدخال رقم الحوالة أو كود الكرت لتأكيد الدفع اليدوي');
+      return;
+    }
+
+    const paymentMethodLabels: Record<PaymentMethod, string> = {
+      wallet: 'المحفظة الإلكترونية',
+      atlos_crypto: 'بوابة ATLOS المشفرة (USDT)',
+      libyana: 'ليبيانا (دفع يدوي)',
+      almadar: 'المدار الجديد (دفع يدوي)',
+      bank_transfer: 'تحويل مصرفي (دفع يدوي)',
+      payoneer: 'Payoneer (دفع يدوي)',
+    };
 
     createOrder({
       customerId: 'usr-tarek',
@@ -78,10 +102,11 @@ export const ProductDetailScreen: React.FC = () => {
       targetPlayerId: isDirectRecharge ? playerId : undefined,
       targetPlayerName: isDirectRecharge ? playerName : undefined,
       isGift: false,
-      paymentMethod: 'المحفظة الإلكترونية',
+      paymentMethod: paymentMethodLabels[paymentMethod] || paymentMethod,
+      paymentReference: paymentReference.trim() || undefined,
     });
 
-    // Navigate to admin fulfillment or wallet
+    // Navigate to admin fulfillment or home
     setActiveScreen('admin');
   };
 
@@ -260,6 +285,143 @@ export const ProductDetailScreen: React.FC = () => {
               )}
             </div>
           )}
+
+          {/* Payment Methods Selection */}
+          <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-3">
+            <label className="text-xs font-bold text-slate-200 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <CreditCard className="w-4 h-4 text-cyan-400" />
+                <span>طريقة الدفع:</span>
+              </span>
+              {paymentMethod === 'wallet' && (
+                <span className="text-[11px] text-cyan-300 font-mono">
+                  رصيدك: {formatPrice(customerBalanceUSD)}
+                </span>
+              )}
+            </label>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+              <button
+                type="button"
+                onClick={() => setPaymentMethod('wallet')}
+                className={`p-2.5 rounded-xl border text-right transition-all ${
+                  paymentMethod === 'wallet'
+                    ? 'border-cyan-400 bg-cyan-500/10 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.2)]'
+                    : 'border-slate-800 bg-slate-800/60 text-slate-300 hover:border-slate-700'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-0.5">
+                  <Wallet className="w-3.5 h-3.5 text-cyan-400" />
+                  <span className="text-[9px] text-emerald-400">فوري</span>
+                </div>
+                <div className="font-bold">المحفظة الإلكترونية</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPaymentMethod('atlos_crypto')}
+                className={`p-2.5 rounded-xl border text-right transition-all ${
+                  paymentMethod === 'atlos_crypto'
+                    ? 'border-cyan-400 bg-cyan-500/10 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.2)]'
+                    : 'border-slate-800 bg-slate-800/60 text-slate-300 hover:border-slate-700'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-0.5">
+                  <Coins className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="text-[9px] text-amber-400">USDT</span>
+                </div>
+                <div className="font-bold">بوابة ATLOS المشفرة</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPaymentMethod('libyana')}
+                className={`p-2.5 rounded-xl border text-right transition-all ${
+                  paymentMethod === 'libyana'
+                    ? 'border-cyan-400 bg-cyan-500/10 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.2)]'
+                    : 'border-slate-800 bg-slate-800/60 text-slate-300 hover:border-slate-700'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-0.5">
+                  <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="text-[9px] text-emerald-400">يدوي</span>
+                </div>
+                <div className="font-bold">ليبيانا (Libyana)</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPaymentMethod('almadar')}
+                className={`p-2.5 rounded-xl border text-right transition-all ${
+                  paymentMethod === 'almadar'
+                    ? 'border-cyan-400 bg-cyan-500/10 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.2)]'
+                    : 'border-slate-800 bg-slate-800/60 text-slate-300 hover:border-slate-700'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-0.5">
+                  <Smartphone className="w-3.5 h-3.5 text-blue-400" />
+                  <span className="text-[9px] text-blue-400">يدوي</span>
+                </div>
+                <div className="font-bold">المدار الجديد</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPaymentMethod('bank_transfer')}
+                className={`p-2.5 rounded-xl border text-right transition-all ${
+                  paymentMethod === 'bank_transfer'
+                    ? 'border-cyan-400 bg-cyan-500/10 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.2)]'
+                    : 'border-slate-800 bg-slate-800/60 text-slate-300 hover:border-slate-700'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-0.5">
+                  <Building2 className="w-3.5 h-3.5 text-purple-400" />
+                  <span className="text-[9px] text-purple-400">يدوي</span>
+                </div>
+                <div className="font-bold">تحويل مصرفي</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setPaymentMethod('payoneer')}
+                className={`p-2.5 rounded-xl border text-right transition-all ${
+                  paymentMethod === 'payoneer'
+                    ? 'border-cyan-400 bg-cyan-500/10 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.2)]'
+                    : 'border-slate-800 bg-slate-800/60 text-slate-300 hover:border-slate-700'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-0.5">
+                  <Sparkles className="w-3.5 h-3.5 text-orange-400" />
+                  <span className="text-[9px] text-orange-400">يدوي</span>
+                </div>
+                <div className="font-bold">Payoneer</div>
+              </button>
+            </div>
+
+            {/* Manual Payment Reference Input */}
+            {isManualPayment && (
+              <div className="p-3 rounded-xl bg-amber-950/20 border border-amber-500/30 space-y-2 text-xs">
+                <div className="flex items-start gap-1.5 text-amber-300 text-[11px]">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-amber-400 mt-0.5" />
+                  <span>الطلب سيوضع في حالة <strong>(بانتظار مراجعة الإدارة)</strong> ولن يتم تسليم الكود أو الشحن حتى تدقيق الحوالة.</span>
+                </div>
+                <input
+                  type="text"
+                  value={paymentReference}
+                  onChange={(e) => setPaymentReference(e.target.value)}
+                  placeholder="أدخل كود الكرت أو رقم الحوالة / إشعار التحويل *"
+                  className="w-full px-3 py-2 bg-slate-950 border border-amber-500/40 rounded-lg text-amber-200 text-xs font-mono focus:outline-none focus:border-cyan-400"
+                />
+              </div>
+            )}
+
+            {paymentMethod === 'atlos_crypto' && (
+              <div className="p-2.5 rounded-xl bg-cyan-950/30 border border-cyan-500/30 text-[11px] text-cyan-300 flex items-center gap-2">
+                <Coins className="w-4 h-4 text-cyan-400 shrink-0" />
+                <span>الدفع المشفر عبر ATLOS: يتم التحقق خادمياً من توقيع HMAC ومطابقة مبلغ الطلب.</span>
+              </div>
+            )}
+          </div>
 
           {/* Sticky Price & Action Bar (Screen 4 buttons: إرسال كهدية & شراء الآن) */}
           <div className="pt-4 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">

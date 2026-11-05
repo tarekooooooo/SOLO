@@ -13,9 +13,14 @@ import {
   Info,
   ChevronRight,
   Clock,
-  Sparkles
+  Sparkles,
+  Building2,
+  Smartphone,
+  Coins,
+  AlertCircle,
+  FileText
 } from 'lucide-react';
-import { PhysicalProduct, ShippingAddress } from '../../types';
+import { PhysicalProduct, ShippingAddress, PaymentMethod } from '../../types';
 
 interface PhysicalProductDetailModalProps {
   product: PhysicalProduct | null;
@@ -59,7 +64,8 @@ export const PhysicalProductDetailModal: React.FC<PhysicalProductDetailModalProp
   const [streetAddress, setStreetAddress] = useState('طريق أنس بن مالك، مبنى 22');
   const [postalCode, setPostalCode] = useState('13524');
   const [notes, setNotes] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<'wallet' | 'card' | 'apple_pay'>('wallet');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('wallet');
+  const [paymentReference, setPaymentReference] = useState('');
   const [placedOrderNumber, setPlacedOrderNumber] = useState('');
 
   if (!product) return null;
@@ -80,6 +86,8 @@ export const PhysicalProductDetailModal: React.FC<PhysicalProductDetailModalProp
   const subtotal = product.priceUSD * quantity;
   const grandTotalUSD = subtotal + shippingCost;
 
+  const isManualPayment = ['libyana', 'almadar', 'bank_transfer', 'payoneer'].includes(paymentMethod);
+
   const handlePlaceOrder = () => {
     if (!fullName || !phone || !city || !streetAddress) {
       showToast('يرجى تعبئة جميع بيانات الشحن الإلزامية');
@@ -87,7 +95,12 @@ export const PhysicalProductDetailModal: React.FC<PhysicalProductDetailModalProp
     }
 
     if (paymentMethod === 'wallet' && customerBalanceUSD < grandTotalUSD) {
-      showToast('رصيدك في المحفظة غير كافٍ، يمكنك استخدام البطاقة البنكية أو شحن المحفظة.');
+      showToast('رصيدك في المحفظة غير كافٍ، يمكنك استخدام الدفع اليدوي أو شحن المحفظة.');
+      return;
+    }
+
+    if (isManualPayment && !paymentReference.trim()) {
+      showToast('يرجى إدخال رقم الحوالة / كود الكرت / الإشعار لتأكيد التحويل');
       return;
     }
 
@@ -100,6 +113,15 @@ export const PhysicalProductDetailModal: React.FC<PhysicalProductDetailModalProp
       streetAddress,
       postalCode,
       notes,
+    };
+
+    const paymentMethodLabels: Record<PaymentMethod, string> = {
+      wallet: 'رصيد المحفظة الإلكترونية',
+      atlos_crypto: 'بوابة ATLOS المشفرة (USDT / Crypto)',
+      libyana: 'رصيد وكروت ليبيانا (دفع يدوي)',
+      almadar: 'رصيد وكروت المدار الجديد (دفع يدوي)',
+      bank_transfer: 'تحويل مصرفي مباشر (دفع يدوي)',
+      payoneer: 'حساب Payoneer (دفع يدوي)',
     };
 
     const newOrder = createPhysicalOrder({
@@ -116,11 +138,8 @@ export const PhysicalProductDetailModal: React.FC<PhysicalProductDetailModalProp
       shippingFeeUSD: shippingCost,
       totalUSD: grandTotalUSD,
       shippingAddress,
-      paymentMethod: paymentMethod === 'wallet' 
-        ? 'رصيد المحفظة الإلكترونية' 
-        : paymentMethod === 'apple_pay' 
-        ? 'Apple Pay' 
-        : 'بطاقة مدى / ائتمانية',
+      paymentMethod: paymentMethodLabels[paymentMethod] || paymentMethod,
+      paymentReference: paymentReference.trim() || undefined,
     });
 
     setPlacedOrderNumber(newOrder.orderNumber);
@@ -478,7 +497,7 @@ export const PhysicalProductDetailModal: React.FC<PhysicalProductDetailModalProp
                   <span>طريقة الدفع:</span>
                 </h3>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs">
                   <button
                     type="button"
                     onClick={() => setPaymentMethod('wallet')}
@@ -490,46 +509,132 @@ export const PhysicalProductDetailModal: React.FC<PhysicalProductDetailModalProp
                   >
                     <div className="flex items-center justify-between mb-1">
                       <Wallet className="w-4 h-4 text-cyan-400" />
-                      <span className="text-[10px] text-slate-400">رصيدك: {formatPrice(customerBalanceUSD)}</span>
+                      <span className="text-[10px] text-slate-400 font-mono">{formatPrice(customerBalanceUSD)}</span>
                     </div>
                     <div className="font-bold">المحفظة الإلكترونية</div>
-                    <div className="text-[10px] text-slate-400 mt-0.5">خصم مباشر وفوري</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">خصم فوري مباشر</div>
                   </button>
 
                   <button
                     type="button"
-                    onClick={() => setPaymentMethod('card')}
+                    onClick={() => setPaymentMethod('atlos_crypto')}
                     className={`p-3 rounded-xl border text-right transition-all ${
-                      paymentMethod === 'card'
+                      paymentMethod === 'atlos_crypto'
                         ? 'border-cyan-400 bg-cyan-500/10 text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.2)]'
                         : 'border-slate-800 bg-slate-800/60 text-slate-300 hover:border-slate-700'
                     }`}
                   >
                     <div className="flex items-center justify-between mb-1">
-                      <CreditCard className="w-4 h-4 text-emerald-400" />
-                      <span className="text-[10px] text-emerald-400">مدى / فيزا</span>
+                      <Coins className="w-4 h-4 text-amber-400" />
+                      <span className="text-[10px] text-amber-400 font-mono">ATLOS Crypto</span>
                     </div>
-                    <div className="font-bold">بطاقة بنكية / مدى</div>
-                    <div className="text-[10px] text-slate-400 mt-0.5">بوابة دفع آمنة 3D Secure</div>
+                    <div className="font-bold">بوابة ATLOS المشفرة</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">USDT / BTC / ETH</div>
                   </button>
 
                   <button
                     type="button"
-                    onClick={() => setPaymentMethod('apple_pay')}
+                    onClick={() => setPaymentMethod('libyana')}
                     className={`p-3 rounded-xl border text-right transition-all ${
-                      paymentMethod === 'apple_pay'
+                      paymentMethod === 'libyana'
                         ? 'border-cyan-400 bg-cyan-500/10 text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.2)]'
                         : 'border-slate-800 bg-slate-800/60 text-slate-300 hover:border-slate-700'
                     }`}
                   >
                     <div className="flex items-center justify-between mb-1">
-                      <Sparkles className="w-4 h-4 text-white" />
-                      <span className="text-[10px] text-slate-400">سريع بنقرة</span>
+                      <Smartphone className="w-4 h-4 text-emerald-400" />
+                      <span className="text-[10px] text-emerald-400">يدوي</span>
                     </div>
-                    <div className="font-bold">Apple Pay</div>
-                    <div className="text-[10px] text-slate-400 mt-0.5">الدفع الآمن للأجهزة</div>
+                    <div className="font-bold">ليبيانا (Libyana)</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">كروت شحن / رصيد</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod('almadar')}
+                    className={`p-3 rounded-xl border text-right transition-all ${
+                      paymentMethod === 'almadar'
+                        ? 'border-cyan-400 bg-cyan-500/10 text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.2)]'
+                        : 'border-slate-800 bg-slate-800/60 text-slate-300 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <Smartphone className="w-4 h-4 text-blue-400" />
+                      <span className="text-[10px] text-blue-400">يدوي</span>
+                    </div>
+                    <div className="font-bold">المدار الجديد (Al-Madar)</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">كروت شحن / رصيد</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod('bank_transfer')}
+                    className={`p-3 rounded-xl border text-right transition-all ${
+                      paymentMethod === 'bank_transfer'
+                        ? 'border-cyan-400 bg-cyan-500/10 text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.2)]'
+                        : 'border-slate-800 bg-slate-800/60 text-slate-300 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <Building2 className="w-4 h-4 text-purple-400" />
+                      <span className="text-[10px] text-purple-400">يدوي</span>
+                    </div>
+                    <div className="font-bold">تحويل مصرفي مباشر</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">حساب مصرفي معتمد</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setPaymentMethod('payoneer')}
+                    className={`p-3 rounded-xl border text-right transition-all ${
+                      paymentMethod === 'payoneer'
+                        ? 'border-cyan-400 bg-cyan-500/10 text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.2)]'
+                        : 'border-slate-800 bg-slate-800/60 text-slate-300 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <Sparkles className="w-4 h-4 text-orange-400" />
+                      <span className="text-[10px] text-orange-400">يدوي</span>
+                    </div>
+                    <div className="font-bold">Payoneer</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">تحويل لحساب Payoneer</div>
                   </button>
                 </div>
+
+                {/* Manual Payment Information & Reference Number Input */}
+                {isManualPayment && (
+                  <div className="p-3.5 rounded-xl bg-amber-950/20 border border-amber-500/30 space-y-2 text-xs">
+                    <div className="flex items-start gap-2 text-amber-300">
+                      <AlertCircle className="w-4 h-4 mt-0.5 shrink-0 text-amber-400" />
+                      <p className="leading-relaxed">
+                        <strong>ملاحظة هامة:</strong> عمليات الدفع اليدوي (ليبيانا / المدار / التحويل المصرفي / Payoneer) يتم وضعها تلقائياً في حالة <span className="underline text-amber-200">بانتظار مراجعة الإدارة</span>، ولن يتم تجهيز الشحنة حتى مراجعة الإشعار وتأكيده على الخادم.
+                      </p>
+                    </div>
+
+                    <div className="space-y-1 pt-1">
+                      <label className="text-[11px] font-semibold text-slate-200 block">
+                        رقم الإشعار / كود كرت الشحن / رقم الحوالة *
+                      </label>
+                      <input
+                        type="text"
+                        value={paymentReference}
+                        onChange={(e) => setPaymentReference(e.target.value)}
+                        placeholder="أدخل كود الكرت المكون من 13-16 رقم أو رقم الحوالة البنكية"
+                        className="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-amber-500/40 text-amber-200 text-xs font-mono focus:border-cyan-400 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* ATLOS Gateway Info */}
+                {paymentMethod === 'atlos_crypto' && (
+                  <div className="p-3.5 rounded-xl bg-cyan-950/30 border border-cyan-500/30 text-xs text-cyan-200 flex items-start gap-2">
+                    <Coins className="w-4 h-4 mt-0.5 shrink-0 text-cyan-400" />
+                    <p className="leading-relaxed">
+                      <strong>بوابة ATLOS المشفرة:</strong> تدعم الإيداع المباشر عبر USDT (TRC20/ERC20) والعملات المشفرة. يتم التحقق خادمياً من صحة توقيع HMAC والـ Webhook قبل اعتماد الدفع تلقائياً.
+                    </p>
+                  </div>
+                )}
               </div>
 
               {/* Total Calculation & Checkout Button */}

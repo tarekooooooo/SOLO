@@ -125,6 +125,9 @@ interface StoreContextType {
   registerWithEmail: (name: string, email: string, pass: string) => void;
   logout: () => void;
 
+  // Admin Manual Review (مراجعة واعتماد الحوالات اليدوية ليبيانا/المدار/تحويل/Payoneer/ATLOS)
+  reviewManualPayment: (orderId: string, decision: 'approve' | 'reject', notes?: string, isPhysical?: boolean) => Promise<{ success: boolean; message: string }>;
+
   // Profile & Toast
   playerProfile: PlayerProfile;
   updatePlayerProfile: (updates: Partial<PlayerProfile>) => void;
@@ -267,73 +270,86 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Orders Management & Fulfillment Pipeline
   const createOrder = (orderData: Omit<Order, 'id' | 'orderNumber' | 'date' | 'status'>): Order => {
     const newId = `ord-${Date.now().toString().slice(-4)}`;
+    const isManualOrAtlos = 
+      ['libyana', 'almadar', 'bank_transfer', 'payoneer', 'atlos_crypto'].includes(orderData.paymentMethod as string) ||
+      /ليبيانا|المدار|مصرفي|تحويل|Payoneer|ATLOS|يدوي/i.test(String(orderData.paymentMethod));
+
+    const initialStatus: OrderStatus = isManualOrAtlos ? 'awaiting_manual_review' : 'pending';
+
     const newOrder: Order = {
       ...orderData,
       id: newId,
       orderNumber: `#TRK-${newId.replace('ord-', '')}`,
       date: 'الآن',
-      status: 'pending',
+      status: initialStatus,
     };
 
     setOrders((prev) => [newOrder, ...prev]);
 
-    // Deduct from customer balance
-    setCustomerBalanceUSD((prev) => Math.max(0, prev - newOrder.priceUSD));
-
-    // Add transaction
-    const newTx: WalletTransaction = {
-      id: `tx-${Date.now()}`,
-      type: 'purchase',
-      title: `طلب جديد: ${newOrder.productName} (${newOrder.packageName})`,
-      amountUSD: -newOrder.priceUSD,
-      date: new Date().toISOString().replace('T', ' ').substring(0, 16),
-      status: 'completed',
-      method: newOrder.paymentMethod,
-      orderId: newOrder.orderNumber,
-    };
-    setTransactions((prev) => [newTx, ...prev]);
-
-    // Check if auto-deliverable instant code
-    const targetProduct = products.find((p) => p.id === newOrder.productId);
-    const targetPkg = targetProduct?.packages.find((pkg) => pkg.id === newOrder.packageId);
-
-    if (newOrder.deliveryType === 'instant_code' && targetPkg?.availableCodes && targetPkg.availableCodes.length > 0) {
-      // Auto-assign first code
-      const deliveredCode = targetPkg.availableCodes[0];
-      setTimeout(() => {
-        setOrders((prev) =>
-          prev.map((o) =>
-            o.id === newOrder.id
-              ? {
-                  ...o,
-                  status: 'completed',
-                  assignedCode: deliveredCode,
-                  fulfilledAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
-                  fulfillmentNotes: 'تم التسليم التلقائي الفوري من بنك الأكواد الرقمية بنجاح ⚡',
-                }
-              : o
-          )
-        );
-        // Remove used code from package
-        setProducts((prev) =>
-          prev.map((prod) => {
-            if (prod.id !== newOrder.productId) return prod;
-            return {
-              ...prod,
-              packages: prod.packages.map((pkg) => {
-                if (pkg.id !== newOrder.packageId) return pkg;
-                return {
-                  ...pkg,
-                  availableCodes: (pkg.availableCodes || []).filter((c) => c !== deliveredCode),
-                };
-              }),
-            };
-          })
-        );
-      }, 1000);
+    // Only deduct customer wallet balance if paid via wallet
+    if (!isManualOrAtlos && String(orderData.paymentMethod).includes('محفظة')) {
+      setCustomerBalanceUSD((prev) => Math.max(0, prev - newOrder.priceUSD));
+      
+      const newTx: WalletTransaction = {
+        id: `tx-${Date.now()}`,
+        type: 'purchase',
+        title: `طلب جديد: ${newOrder.productName} (${newOrder.packageName})`,
+        amountUSD: -newOrder.priceUSD,
+        date: new Date().toISOString().replace('T', ' ').substring(0, 16),
+        status: 'completed',
+        method: newOrder.paymentMethod,
+        orderId: newOrder.orderNumber,
+      };
+      setTransactions((prev) => [newTx, ...prev]);
     }
 
-    showToast(`تم إنشاء الطلب ${newOrder.orderNumber} بنجاح! جاري التجهيز...`);
+    // Auto-deliver instant code ONLY if already confirmed (e.g. wallet paid)
+    // NEVER auto-deliver for manual payment methods or ATLOS until approved by admin
+    if (!isManualOrAtlos) {
+      const targetProduct = products.find((p) => p.id === newOrder.productId);
+      const targetPkg = targetProduct?.packages.find((pkg) => pkg.id === newOrder.packageId);
+
+      if (newOrder.deliveryType === 'instant_code' && targetPkg?.availableCodes && targetPkg.availableCodes.length > 0) {
+        const deliveredCode = targetPkg.availableCodes[0];
+        setTimeout(() => {
+          setOrders((prev) =>
+            prev.map((o) =>
+              o.id === newOrder.id
+                ? {
+                    ...o,
+                    status: 'completed',
+                    assignedCode: deliveredCode,
+                    fulfilledAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
+                    fulfillmentNotes: 'تم التسليم التلقائي الفوري من بنك الأكواد الرقمية بنجاح ⚡',
+                  }
+                : o
+            )
+          );
+          setProducts((prev) =>
+            prev.map((prod) => {
+              if (prod.id !== newOrder.productId) return prod;
+              return {
+                ...prod,
+                packages: prod.packages.map((pkg) => {
+                  if (pkg.id !== newOrder.packageId) return pkg;
+                  return {
+                    ...pkg,
+                    availableCodes: (pkg.availableCodes || []).filter((c) => c !== deliveredCode),
+                  };
+                }),
+              };
+            })
+          );
+        }, 1000);
+      }
+    }
+
+    if (isManualOrAtlos) {
+      showToast(`تم تسجيل الطلب ${newOrder.orderNumber}، وهو الآن "بانتظار مراجعة الإدارة وتدقيق الحوالة" ⏳`);
+    } else {
+      showToast(`تم إنشاء الطلب ${newOrder.orderNumber} بنجاح! جاري التجهيز...`);
+    }
+
     return newOrder;
   };
 
@@ -734,38 +750,50 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   // Physical Orders Handlers
   const createPhysicalOrder = (orderData: Omit<PhysicalOrder, 'id' | 'orderNumber' | 'createdAt' | 'status'>): PhysicalOrder => {
     const newId = `pord-${Date.now().toString().slice(-4)}`;
+    const isManualOrAtlos = 
+      ['libyana', 'almadar', 'bank_transfer', 'payoneer', 'atlos_crypto'].includes(orderData.paymentMethod as string) ||
+      /ليبيانا|المدار|مصرفي|تحويل|Payoneer|ATLOS|يدوي/i.test(String(orderData.paymentMethod));
+
+    const initialStatus: PhysicalOrderStatus = isManualOrAtlos 
+      ? 'awaiting_manual_review' 
+      : (apiConfig.autoFulfillWithCJ ? 'cj_syncing' : 'pending');
+
     const newOrder: PhysicalOrder = {
       ...orderData,
       id: newId,
       orderNumber: `#CJ-ORD-${newId.replace('pord-', '')}`,
       createdAt: 'الآن',
-      status: apiConfig.autoFulfillWithCJ ? 'cj_syncing' : 'pending',
-      cjOrderId: apiConfig.autoFulfillWithCJ ? `CJ2026${Date.now().toString().slice(-6)}` : undefined,
-      cjTrackingNumber: apiConfig.autoFulfillWithCJ ? `CJEXP${Math.floor(100000000 + Math.random() * 900000000)}` : undefined,
+      status: initialStatus,
+      cjOrderId: (!isManualOrAtlos && apiConfig.autoFulfillWithCJ) ? `CJ2026${Date.now().toString().slice(-6)}` : undefined,
+      cjTrackingNumber: (!isManualOrAtlos && apiConfig.autoFulfillWithCJ) ? `CJEXP${Math.floor(100000000 + Math.random() * 900000000)}` : undefined,
       shippingCarrier: 'CJ Packet Fast Line',
     };
 
     setPhysicalOrders((prev) => [newOrder, ...prev]);
 
     // If paid via wallet
-    if (orderData.paymentMethod.includes('محفظة')) {
+    if (!isManualOrAtlos && orderData.paymentMethod.includes('محفظة')) {
       setCustomerBalanceUSD((prev) => Math.max(0, prev - newOrder.totalUSD));
+      
+      const newTx: WalletTransaction = {
+        id: `tx-${Date.now()}`,
+        type: 'purchase',
+        title: `شراء شحنة: ${newOrder.productTitle.slice(0, 30)}...`,
+        amountUSD: newOrder.totalUSD,
+        date: 'الآن',
+        status: 'completed',
+        method: newOrder.paymentMethod,
+        orderId: newOrder.orderNumber,
+      };
+      setTransactions((prev) => [newTx, ...prev]);
     }
 
-    // Add transaction
-    const newTx: WalletTransaction = {
-      id: `tx-${Date.now()}`,
-      type: 'purchase',
-      title: `شراء شحنة: ${newOrder.productTitle.slice(0, 30)}...`,
-      amountUSD: newOrder.totalUSD,
-      date: 'الآن',
-      status: 'completed',
-      method: newOrder.paymentMethod,
-      orderId: newOrder.orderNumber,
-    };
-    setTransactions((prev) => [newTx, ...prev]);
+    if (isManualOrAtlos) {
+      showToast(`📦 تم إرسال طلب الشحنة ${newOrder.orderNumber}، وهو الآن "بانتظار مراجعة الإدارة للحوالة" قبل التجهيز.`);
+    } else {
+      showToast(`🎉 تم إرسال الطلب ${newOrder.orderNumber} بنجاح! جاري التجهيز والشحن.`);
+    }
 
-    showToast(`🎉 تم إرسال الطلب ${newOrder.orderNumber} بنجاح! جاري التجهيز والشحن.`);
     return newOrder;
   };
 
@@ -798,6 +826,76 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     );
     showToast(`تمت مزامنة الطلب مع CJ Dropshipping بنجاح وإصدار بوليصة الشحن 🚀`);
   };
+
+  // Admin Manual Review Handler (Server & Local Synchronization)
+  const reviewManualPayment = async (
+    orderId: string,
+    decision: 'approve' | 'reject',
+    notes?: string,
+    isPhysical: boolean = false
+  ): Promise<{ success: boolean; message: string }> => {
+    try {
+      // 1. Invoke Supabase Edge Function if user has active session
+      if (currentUser) {
+        try {
+          const res = await fetch(getFunctionUrl('review-manual-payment'), {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${currentUser.id}`,
+            },
+            body: JSON.stringify({ orderId, decision, notes }),
+          });
+          const result = await res.json();
+          if (res.ok && result.success) {
+            console.log('Server review_manual_payment succeeded:', result);
+          }
+        } catch (e) {
+          console.warn('Edge function offline or local mode:', e);
+        }
+      }
+
+      // 2. Update local state
+      if (isPhysical) {
+        setPhysicalOrders((prev) =>
+          prev.map((o) => {
+            if (o.id !== orderId) return o;
+            const newStatus: PhysicalOrderStatus = decision === 'approve' ? 'processing' : 'cancelled';
+            return {
+              ...o,
+              status: newStatus,
+              paymentReference: o.paymentReference 
+                ? `${o.paymentReference} (مراجعة الإدارة: ${decision === 'approve' ? 'معتمد ✅' : 'مرفوض ❌'})`
+                : undefined,
+            };
+          })
+        );
+      } else {
+        setOrders((prev) =>
+          prev.map((o) => {
+            if (o.id !== orderId) return o;
+            const newStatus: OrderStatus = decision === 'approve' ? 'processing' : 'cancelled';
+            return {
+              ...o,
+              status: newStatus,
+              fulfillmentNotes: notes || (decision === 'approve' ? 'تم اعتماد الدفع وتأكيد الحوالة من قبل الإدارة' : 'تم رفض الحوالة وإلغاء الطلب'),
+            };
+          })
+        );
+      }
+
+      const msg = decision === 'approve'
+        ? `✅ تم اعتماد الدفع للطلب ${orderId} بنجاح وتحويله للمعالجة والتجهيز.`
+        : `❌ تم رفض إشعار التحويل وإلغاء الطلب ${orderId}.`;
+      showToast(msg);
+      return { success: true, message: msg };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'فشلت معالجة مراجعة الدفع';
+      showToast(`⚠️ خطأ: ${msg}`);
+      return { success: false, message: msg };
+    }
+  };
+
 
   // Auth Handlers
   const loginWithGoogle = () => {
@@ -946,6 +1044,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         loginWithEmail,
         registerWithEmail,
         logout,
+
+        // Admin Manual Review
+        reviewManualPayment,
       }}
     >
       {children}

@@ -176,8 +176,17 @@ export interface ShippingAddress {
   notes?: string;
 }
 
+export type PaymentMethod = 
+  | 'atlos_crypto' 
+  | 'libyana' 
+  | 'almadar' 
+  | 'bank_transfer' 
+  | 'payoneer' 
+  | 'wallet';
+
 export type PhysicalOrderStatus = 
   | 'pending' 
+  | 'awaiting_manual_review'
   | 'cj_syncing' 
   | 'processing' 
   | 'shipped' 
@@ -205,10 +214,18 @@ export interface PhysicalOrder {
   shippingCarrier?: string;
   status: PhysicalOrderStatus;
   createdAt: string;
-  paymentMethod: string;
+  paymentMethod: PaymentMethod | string;
+  paymentReference?: string;
+  paymentReceiptUrl?: string;
 }
 
-export type OrderStatus = 'pending' | 'processing' | 'ready_to_deliver' | 'completed' | 'cancelled';
+export type OrderStatus = 
+  | 'pending' 
+  | 'awaiting_manual_review'
+  | 'processing' 
+  | 'ready_to_deliver' 
+  | 'completed' 
+  | 'cancelled';
 
 export interface Order {
   id: string;
@@ -234,7 +251,9 @@ export interface Order {
   assignedCode?: string;
   fulfillmentNotes?: string;
   fulfilledAt?: string;
-  paymentMethod: string;
+  paymentMethod: PaymentMethod | string;
+  paymentReference?: string;
+  paymentReceiptUrl?: string;
 }
 
 export interface WalletTransaction {

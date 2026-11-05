@@ -27,6 +27,8 @@ export function getFunctionUrl(functionName: string): string {
     'cj-orders-list': '/api/cj/orders-list',
     'cj-catalog-search': '/api/cj/product-search',
     'create-order': '/api/orders/create',
+    'review-manual-payment': '/api/admin/review-manual-payment',
+    'atlos-webhook': '/api/payment/atlos-webhook',
   };
   return localMap[functionName] || `/api/${functionName}`;
 }

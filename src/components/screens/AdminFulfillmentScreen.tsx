@@ -28,7 +28,13 @@ import {
   Truck,
   Copy,
   MapPin,
-  Key
+  Key,
+  CheckCircle2,
+  XCircle,
+  Smartphone,
+  Coins,
+  Building2,
+  CreditCard
 } from 'lucide-react';
 import { useStore } from '../../context/StoreContext';
 import { Order, OrderStatus, PhysicalOrderStatus } from '../../types';
@@ -50,13 +56,20 @@ export const AdminFulfillmentScreen: React.FC = () => {
     supportTickets,
     apiConfig,
     setIsApiModalOpen,
-    showToast 
+    showToast,
+    reviewManualPayment
   } = useStore();
 
-  const [activeAdminTab, setActiveAdminTab] = useState<'orders' | 'assistants' | 'support' | 'cj_orders'>('orders');
+  const [activeAdminTab, setActiveAdminTab] = useState<'orders' | 'cj_orders' | 'manual_reviews' | 'assistants' | 'support'>('orders');
   const [statusFilter, setStatusFilter] = useState<'all' | OrderStatus>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddAssistantOpen, setIsAddAssistantOpen] = useState(false);
+  const [reviewNotes, setReviewNotes] = useState<Record<string, string>>({});
+  const [submittingReviewId, setSubmittingReviewId] = useState<string | null>(null);
+
+  const awaitingManualDigital = orders.filter((o) => o.status === 'awaiting_manual_review');
+  const awaitingManualPhysical = physicalOrders.filter((o) => o.status === 'awaiting_manual_review');
+  const totalAwaitingManual = awaitingManualDigital.length + awaitingManualPhysical.length;
 
   const filteredOrders = orders.filter((o) => {
     const matchesStatus = statusFilter === 'all' || o.status === statusFilter;
@@ -203,6 +216,23 @@ export const AdminFulfillmentScreen: React.FC = () => {
           {physicalOrders.filter(o => o.status === 'cj_syncing' || o.status === 'processing').length > 0 && (
             <span className="w-5 h-5 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-700 text-[10px] flex items-center justify-center font-bold font-mono">
               {physicalOrders.filter(o => o.status === 'cj_syncing' || o.status === 'processing').length}
+            </span>
+          )}
+        </button>
+
+        <button
+          onClick={() => setActiveAdminTab('manual_reviews')}
+          className={`flex-1 min-w-[140px] py-2.5 rounded-xl transition-all flex items-center justify-center gap-2 ${
+            activeAdminTab === 'manual_reviews'
+              ? 'bg-amber-400 text-black font-bold shadow-md shadow-amber-500/20'
+              : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          <CreditCard className="w-4 h-4" />
+          <span>مراجعة الحوالات ({totalAwaitingManual})</span>
+          {totalAwaitingManual > 0 && (
+            <span className="w-5 h-5 rounded-full bg-amber-500 text-black text-[10px] flex items-center justify-center font-bold font-mono">
+              {totalAwaitingManual}
             </span>
           )}
         </button>
@@ -706,6 +736,229 @@ export const AdminFulfillmentScreen: React.FC = () => {
                   </div>
                 </div>
               ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* TAB: MANUAL PAYMENT REVIEWS (ليبيانا / المدار / تحويل مصرفي / Payoneer / ATLOS) */}
+      {activeAdminTab === 'manual_reviews' && (
+        <div className="space-y-4">
+          {/* Security Notice Banner */}
+          <div className="p-4 rounded-2xl bg-amber-950/20 border border-amber-500/30 flex items-start gap-3 text-xs">
+            <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <h4 className="font-bold text-amber-300 text-sm">
+                مركز مراجعة وتدقيق الحوالات اليدوية وبوابة ATLOS
+              </h4>
+              <p className="text-slate-300 leading-relaxed">
+                قاعدة الأمان الصارمة: الطلبات اليدوية لا يتم شحنها تلقائياً ولا تُرسل لـ CJ Dropshipping إلا بعد أن يقوم المشرف المعتمد بالتحقق من استلام الرصيد والضغط على <strong className="text-emerald-400">اعتماد الدفع</strong>. كل قرار يسجل في سجل تدقيق الإدارة (Admin Audit Log) مع هوية المشرف وتوقيت العملية.
+              </p>
+            </div>
+          </div>
+
+          {/* List of Pending Reviews */}
+          <div className="space-y-4">
+            {totalAwaitingManual === 0 ? (
+              <div className="p-12 text-center rounded-2xl bg-slate-900/40 border border-slate-800 space-y-2">
+                <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto" />
+                <h4 className="text-sm font-bold text-white">لا توجد طلبات دفع يدوي بانتظار المراجعة</h4>
+                <p className="text-xs text-slate-400">جميع الحوالات وإشعارات الدفع تمت مراجعتها واعتمادها بنجاح.</p>
+              </div>
+            ) : (
+              <>
+                {/* 1. Digital Orders Awaiting Review */}
+                {awaitingManualDigital.map((ord) => (
+                  <div
+                    key={ord.id}
+                    className="p-5 rounded-2xl bg-[#0f1523] border border-amber-500/30 shadow-lg space-y-4"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-800">
+                      <div className="flex items-center gap-3">
+                        <span className="font-mono text-sm font-bold text-amber-400">{ord.orderNumber}</span>
+                        <span className="text-xs px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800 font-semibold">
+                          منتج رقمي
+                        </span>
+                        <span className="text-xs text-slate-400">• {ord.date}</span>
+                      </div>
+                      <div className="text-xs font-mono font-bold text-cyan-400">
+                        المبلغ المطلوب: {formatPrice(ord.priceUSD)}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-4 text-xs">
+                      {/* Product & Customer */}
+                      <div className="md:col-span-5 space-y-2">
+                        <div>
+                          <span className="text-slate-400 block text-[11px]">المنتج والباقة:</span>
+                          <span className="font-bold text-white text-sm">{ord.productName} ({ord.packageName})</span>
+                        </div>
+                        <div className="text-slate-300">
+                          العميل: <strong>{ord.customerName}</strong> • {ord.customerPhone || 'بدون هاتف'}
+                        </div>
+                        {ord.targetPlayerId && (
+                          <div className="font-mono text-cyan-300 text-[11px]">
+                            معرف اللاعب (ID): {ord.targetPlayerId} {ord.targetPlayerName ? `(${ord.targetPlayerName})` : ''}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Payment Verification Info */}
+                      <div className="md:col-span-4 p-3 rounded-xl bg-slate-900 border border-slate-800 space-y-1.5">
+                        <div className="text-slate-400 text-[11px] font-semibold">طريقة الدفع المرسلة:</div>
+                        <div className="text-amber-300 font-bold flex items-center gap-1.5">
+                          <Smartphone className="w-4 h-4 text-amber-400" />
+                          <span>{ord.paymentMethod}</span>
+                        </div>
+                        <div className="pt-1 text-slate-300">
+                          <span className="text-slate-400 block text-[11px]">رقم الحوالة / كود الكرت:</span>
+                          <span className="font-mono font-bold text-white bg-slate-950 px-2.5 py-1 rounded border border-slate-800 inline-block mt-0.5">
+                            {ord.paymentReference || 'لم يدخل العميل رقماً'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Admin Actions */}
+                      <div className="md:col-span-3 flex flex-col justify-between space-y-2">
+                        <div>
+                          <label className="text-[11px] text-slate-400 block mb-1">ملاحظات المشرف:</label>
+                          <input
+                            type="text"
+                            placeholder="ملاحظات الاعتماد أو سبب الرفض..."
+                            value={reviewNotes[ord.id] || ''}
+                            onChange={(e) => setReviewNotes({ ...reviewNotes, [ord.id]: e.target.value })}
+                            className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-white text-xs focus:border-cyan-500 focus:outline-none"
+                          />
+                        </div>
+
+                        <div className="flex items-center gap-2 pt-1">
+                          <button
+                            type="button"
+                            disabled={submittingReviewId === ord.id}
+                            onClick={async () => {
+                              setSubmittingReviewId(ord.id);
+                              await reviewManualPayment(ord.id, 'approve', reviewNotes[ord.id], false);
+                              setSubmittingReviewId(null);
+                            }}
+                            className="flex-1 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-1 shadow-md shadow-emerald-950"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>اعتماد ✅</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={submittingReviewId === ord.id}
+                            onClick={async () => {
+                              setSubmittingReviewId(ord.id);
+                              await reviewManualPayment(ord.id, 'reject', reviewNotes[ord.id], false);
+                              setSubmittingReviewId(null);
+                            }}
+                            className="flex-1 py-2 px-3 rounded-xl bg-rose-600/80 hover:bg-rose-500 text-white font-bold text-xs flex items-center justify-center gap-1"
+                          >
+                            <XCircle className="w-3.5 h-3.5" />
+                            <span>رفض ❌</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                {/* 2. Physical Orders Awaiting Review */}
+                {awaitingManualPhysical.map((ord) => (
+                  <div
+                    key={ord.id}
+                    className="p-5 rounded-2xl bg-[#0f1523] border border-amber-500/30 shadow-lg space-y-4"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-800">
+                      <div className="flex items-center gap-3">
+                        <span className="font-mono text-sm font-bold text-amber-400">{ord.orderNumber}</span>
+                        <span className="text-xs px-2 py-0.5 rounded bg-purple-950 text-purple-300 border border-purple-800 font-semibold">
+                          شحنة مادية (CJ Dropshipping)
+                        </span>
+                        <span className="text-xs text-slate-400">• {ord.createdAt}</span>
+                      </div>
+                      <div className="text-xs font-mono font-bold text-cyan-400">
+                        المجموع مع الشحن: {formatPrice(ord.totalUSD)}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-4 text-xs">
+                      {/* Product Info */}
+                      <div className="md:col-span-5 flex items-start gap-3">
+                        <img src={ord.productImage} alt="" className="w-14 h-14 rounded-xl object-cover border border-slate-700 shrink-0" />
+                        <div className="space-y-1">
+                          <span className="font-bold text-white text-sm block">{ord.productTitle}</span>
+                          <span className="text-cyan-400 text-[11px] block">{ord.selectedVariant}</span>
+                          <span className="text-slate-400 text-[11px] block">
+                            العميل: {ord.customerName} ({ord.customerPhone})
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Payment Verification Info */}
+                      <div className="md:col-span-4 p-3 rounded-xl bg-slate-900 border border-slate-800 space-y-1.5">
+                        <div className="text-slate-400 text-[11px] font-semibold">طريقة الدفع المرسلة:</div>
+                        <div className="text-amber-300 font-bold flex items-center gap-1.5">
+                          <Building2 className="w-4 h-4 text-amber-400" />
+                          <span>{ord.paymentMethod}</span>
+                        </div>
+                        <div className="pt-1 text-slate-300">
+                          <span className="text-slate-400 block text-[11px]">رقم الحوالة / كود الكرت:</span>
+                          <span className="font-mono font-bold text-white bg-slate-950 px-2.5 py-1 rounded border border-slate-800 inline-block mt-0.5">
+                            {ord.paymentReference || 'لم يدخل العميل رقماً'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Admin Actions */}
+                      <div className="md:col-span-3 flex flex-col justify-between space-y-2">
+                        <div>
+                          <label className="text-[11px] text-slate-400 block mb-1">ملاحظات المشرف:</label>
+                          <input
+                            type="text"
+                            placeholder="ملاحظات الاعتماد أو سبب الرفض..."
+                            value={reviewNotes[ord.id] || ''}
+                            onChange={(e) => setReviewNotes({ ...reviewNotes, [ord.id]: e.target.value })}
+                            className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-white text-xs focus:border-cyan-500 focus:outline-none"
+                          />
+                        </div>
+
+                        <div className="flex items-center gap-2 pt-1">
+                          <button
+                            type="button"
+                            disabled={submittingReviewId === ord.id}
+                            onClick={async () => {
+                              setSubmittingReviewId(ord.id);
+                              await reviewManualPayment(ord.id, 'approve', reviewNotes[ord.id], true);
+                              setSubmittingReviewId(null);
+                            }}
+                            className="flex-1 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-1 shadow-md shadow-emerald-950"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            <span>اعتماد الشحنة ✅</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={submittingReviewId === ord.id}
+                            onClick={async () => {
+                              setSubmittingReviewId(ord.id);
+                              await reviewManualPayment(ord.id, 'reject', reviewNotes[ord.id], true);
+                              setSubmittingReviewId(null);
+                            }}
+                            className="flex-1 py-2 px-3 rounded-xl bg-rose-600/80 hover:bg-rose-500 text-white font-bold text-xs flex items-center justify-center gap-1"
+                          >
+                            <XCircle className="w-3.5 h-3.5" />
+                            <span>رفض ❌</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </>
             )}
           </div>
         </div>
