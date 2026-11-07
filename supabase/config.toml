@@ -1,0 +1,12 @@
+# This provider-to-server endpoint authenticates every request with the raw-body
+# HMAC-SHA256 signature in atlos-webhook; ATLOS cannot send a Supabase user JWT.
+[functions.atlos-webhook]
+verify_jwt = false
+
+# The storefront status endpoint accepts the project's publishable/anon JWT only.
+[functions.checkout-status]
+verify_jwt = true
+
+# Order creation remains protected by the signed-in user's Supabase JWT.
+[functions.create-order]
+verify_jwt = true
