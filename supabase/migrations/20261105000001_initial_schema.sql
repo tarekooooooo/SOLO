@@ -179,7 +179,9 @@ CREATE INDEX IF NOT EXISTS idx_products_cj_sku ON public.products(cj_sku) WHERE 
 
 -- Public Catalog View: exposes only storefront-safe columns.
 -- Clients must query this view, never the base table.
-CREATE OR REPLACE VIEW public.public_catalog WITH (security_barrier = true) AS
+CREATE OR REPLACE VIEW public.public_catalog
+WITH (security_barrier = true, security_invoker = true)
+AS
   SELECT 
     id,
     product_type,
@@ -204,9 +206,14 @@ CREATE OR REPLACE VIEW public.public_catalog WITH (security_barrier = true) AS
   FROM public.products
   WHERE in_stock = true;
 
--- Do not expose the base product table to browser roles. The view is the only
--- public read surface; service_role remains available to trusted server code.
+-- Only the storefront-safe columns are granted for the security-invoker view;
+-- supplier costs and CJ identifiers remain unavailable to browser roles.
 REVOKE ALL ON TABLE public.products FROM PUBLIC, anon, authenticated;
+GRANT SELECT (
+  id, product_type, slug, title, title_ar, category, platform, image_url,
+  gallery_urls, description, delivery_type, price_usd, in_stock, stock_count,
+  total_sold, rating, reviews_count, packages, variants, created_at
+) ON TABLE public.products TO anon, authenticated;
 REVOKE ALL ON TABLE public.public_catalog FROM PUBLIC, anon, authenticated;
 GRANT SELECT ON TABLE public.public_catalog TO anon, authenticated;
 
@@ -360,7 +367,7 @@ CREATE POLICY "Users can update their own profile"
 DROP POLICY IF EXISTS "Products are viewable by everyone" ON public.products;
 CREATE POLICY "Products are viewable by everyone"
   ON public.products FOR SELECT
-  USING (true);
+  USING (in_stock = true);
 
 DROP POLICY IF EXISTS "Admins can manage products" ON public.products;
 CREATE POLICY "Admins can manage products"
