@@ -1,5 +1,5 @@
 /**
- * Centralized API & Supabase Edge Functions configuration for TAREK STOR / SOLO STOR.
+ * Centralized API & Supabase Edge Functions configuration for SOLO.
  * Frontend on Netlify invokes Supabase Edge Functions directly or via relative proxy in dev.
  * All sensitive keys (CJ_ACCESS_TOKEN, payment secrets) reside strictly in Supabase Server Secrets.
  */

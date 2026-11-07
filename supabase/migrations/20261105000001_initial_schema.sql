@@ -1,5 +1,5 @@
 -- ==============================================================================
--- TAREK STOR / SOLO STOR - Comprehensive Supabase Database Schema Migration
+-- SOLO - Supabase Database Schema Migration
 -- Migration: 20261105000001_initial_schema.sql
 -- Description: Complete production schema supporting:
 --   1. Strict RLS with private profiles & hidden internal costs/CJ SKUs.
@@ -115,12 +115,12 @@ SECURITY DEFINER
 SET search_path = public, pg_temp
 AS $$
 BEGIN
-  IF (auth.jwt() ->> 'role') != 'service_role' AND NOT public.is_admin() THEN
-    IF NEW.role IS DISTINCT FROM OLD.role THEN
+  IF (auth.jwt() ->> 'role') IS DISTINCT FROM 'service_role' THEN
+    IF NEW.role IS DISTINCT FROM OLD.role AND NOT public.is_admin() THEN
       RAISE EXCEPTION 'غير مصرح لك بتغيير الصلاحية أو رتبة الحساب.';
     END IF;
     IF NEW.balance_usd IS DISTINCT FROM OLD.balance_usd THEN
-      RAISE EXCEPTION 'غير مصرح لك بتعديل رصيد المحفظة مباشرة.';
+      RAISE EXCEPTION 'لا يمكن تعديل رصيد المحفظة إلا من خدمة خادم موثوقة.';
     END IF;
   END IF;
   NEW.updated_at = NOW();
@@ -177,8 +177,9 @@ CREATE INDEX IF NOT EXISTS idx_products_type ON public.products(product_type);
 CREATE INDEX IF NOT EXISTS idx_products_category ON public.products(category);
 CREATE INDEX IF NOT EXISTS idx_products_cj_sku ON public.products(cj_sku) WHERE cj_sku IS NOT NULL;
 
--- Public Catalog View: Hides internal cost and CJ supplier SKU from public/competitors
-CREATE OR REPLACE VIEW public.public_catalog AS
+-- Public Catalog View: exposes only storefront-safe columns.
+-- Clients must query this view, never the base table.
+CREATE OR REPLACE VIEW public.public_catalog WITH (security_barrier = true) AS
   SELECT 
     id,
     product_type,
@@ -202,6 +203,12 @@ CREATE OR REPLACE VIEW public.public_catalog AS
     created_at
   FROM public.products
   WHERE in_stock = true;
+
+-- Do not expose the base product table to browser roles. The view is the only
+-- public read surface; service_role remains available to trusted server code.
+REVOKE ALL ON TABLE public.products FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON TABLE public.public_catalog FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON TABLE public.public_catalog TO anon, authenticated;
 
 -- 5. INVENTORY TABLE (Digital codes bank - strictly accessible by service_role and admin)
 CREATE TABLE IF NOT EXISTS public.inventory (
@@ -261,17 +268,19 @@ CREATE TABLE IF NOT EXISTS public.orders (
   cj_shipping_carrier TEXT,
   cj_synced_at TIMESTAMPTZ,
   
-  -- Anti-duplication / Idempotency Key (MANDATORY & UNIQUE)
-  idempotency_key TEXT UNIQUE NOT NULL,
+  -- Idempotency is scoped to the authenticated customer.
+  idempotency_key TEXT NOT NULL,
+  reservation_expires_at TIMESTAMPTZ,
   
   created_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
-  updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL
+  updated_at TIMESTAMPTZ DEFAULT NOW() NOT NULL,
+  CONSTRAINT orders_customer_idempotency_unique UNIQUE (customer_id, idempotency_key)
 );
 
 CREATE INDEX IF NOT EXISTS idx_orders_customer ON public.orders(customer_id);
 CREATE INDEX IF NOT EXISTS idx_orders_status ON public.orders(status);
 CREATE INDEX IF NOT EXISTS idx_orders_payment_status ON public.orders(payment_status);
-CREATE INDEX IF NOT EXISTS idx_orders_idempotency ON public.orders(idempotency_key);
+CREATE INDEX IF NOT EXISTS idx_orders_customer_idempotency ON public.orders(customer_id, idempotency_key);
 CREATE INDEX IF NOT EXISTS idx_orders_order_number ON public.orders(order_number);
 
 -- 7. ORDER ITEMS TABLE
@@ -411,6 +420,19 @@ CREATE POLICY "Admins can view audit logs"
   ON public.admin_audit_logs FOR SELECT
   USING (public.is_admin());
 
+-- Launch safety switch: checkout stays disabled until secure digital
+-- fulfillment, payment review, and customer delivery are actually deployed.
+CREATE TABLE IF NOT EXISTS public.store_settings (
+  singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton = TRUE),
+  checkout_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+INSERT INTO public.store_settings (singleton, checkout_enabled)
+VALUES (TRUE, FALSE)
+ON CONFLICT (singleton) DO NOTHING;
+ALTER TABLE public.store_settings ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.store_settings FROM PUBLIC, anon, authenticated;
+
 -- ==============================================================================
 -- 11. ATOMIC ORDER CREATION RPC (create_order_atomic)
 -- Executes atomically in a single transaction:
@@ -451,6 +473,9 @@ DECLARE
   v_initial_payment_status public.payment_status;
   v_item JSONB;
   v_product public.products%ROWTYPE;
+  v_package JSONB;
+  v_expired_order_id UUID;
+  v_expired_item RECORD;
   v_item_qty INT;
   v_item_unit_price NUMERIC(10, 2);
   v_item_total NUMERIC(10, 2);
@@ -461,18 +486,27 @@ BEGIN
     RAISE EXCEPTION 'المصادقة مطلوبة: يجب تسجيل الدخول لإنشاء طلب.';
   END IF;
 
+  IF NOT EXISTS (
+    SELECT 1 FROM public.store_settings
+    WHERE singleton = TRUE AND checkout_enabled = TRUE
+  ) THEN
+    RAISE EXCEPTION 'إتمام الشراء متوقف لحين ربط مخزون وتسليم رقمي موثوق؛ لا يتم إنشاء طلب أو قبول دفع.';
+  END IF;
+
   SELECT email INTO v_user_email FROM public.profiles WHERE id = v_user_id;
   IF v_user_email IS NULL THEN
     RAISE EXCEPTION 'الملف الشخصي للمستخدم غير موجود.';
   END IF;
 
   -- 2. Idempotency Check
-  IF p_idempotency_key IS NULL OR trim(p_idempotency_key) = '' THEN
-    RAISE EXCEPTION 'مفتاح عدم التكرار (idempotency_key) إلزامي.';
+  IF p_idempotency_key IS NULL OR length(trim(p_idempotency_key)) < 8 OR length(trim(p_idempotency_key)) > 128 THEN
+    RAISE EXCEPTION 'مفتاح عدم التكرار يجب أن يكون بين 8 و128 محرفًا.';
   END IF;
 
+  PERFORM pg_advisory_xact_lock(hashtextextended(v_user_id::TEXT || ':' || trim(p_idempotency_key), 0));
+
   SELECT * INTO v_existing_order FROM public.orders
-  WHERE idempotency_key = p_idempotency_key
+  WHERE customer_id = v_user_id AND idempotency_key = trim(p_idempotency_key)
   FOR UPDATE;
 
   IF FOUND THEN
@@ -482,25 +516,77 @@ BEGIN
       'message', 'الطلب مسجل مسبقاً بنفس مفتاح عدم التكرار',
       'order_id', v_existing_order.id,
       'order_number', v_existing_order.order_number,
-      'status', v_existing_order.status
+      'status', v_existing_order.status,
+      'total_usd', v_existing_order.total_usd,
+      'payment_status', v_existing_order.payment_status
     );
   END IF;
 
+  -- This release accepts only manually verified methods. ATLOS and wallet
+  -- remain disabled until their trusted payment integrations exist.
+  IF p_payment_method NOT IN ('libyana', 'almadar', 'bank_transfer', 'payoneer') THEN
+    RAISE EXCEPTION 'وسيلة الدفع غير مفعلة؛ المتاح مؤقتًا هو الدفع اليدوي فقط.';
+  END IF;
+  IF p_payment_reference IS NULL OR length(trim(p_payment_reference)) < 3 OR length(trim(p_payment_reference)) > 200 THEN
+    RAISE EXCEPTION 'مرجع التحويل مطلوب ويجب ألا يتجاوز 200 محرف.';
+  END IF;
+  IF p_customer_name IS NULL OR length(trim(p_customer_name)) < 2 OR length(trim(p_customer_name)) > 120 THEN
+    RAISE EXCEPTION 'اسم العميل مطلوب ويجب ألا يتجاوز 120 محرفًا.';
+  END IF;
+  IF p_payment_receipt_url IS NOT NULL THEN
+    RAISE EXCEPTION 'رفع إيصال الدفع غير متاح قبل إعداد تخزين خاص وآمن.';
+  END IF;
+  IF p_delivery_type = 'physical_shipment' THEN
+    RAISE EXCEPTION 'الشراء والشحن الماديان متوقفان حتى احتساب عرض شحن حي من CJ.';
+  END IF;
+
   -- 3. Validate items array
-  IF p_items IS NULL OR jsonb_array_length(p_items) = 0 THEN
+  IF p_items IS NULL OR jsonb_typeof(p_items) <> 'array' OR jsonb_array_length(p_items) = 0 THEN
     RAISE EXCEPTION 'يجب أن يحتوي الطلب على عنصر واحد على الأقل.';
   END IF;
+  IF EXISTS (
+    SELECT 1 FROM jsonb_array_elements(p_items) AS requested(item)
+    GROUP BY requested.item->>'product_id'
+    HAVING COUNT(*) > 1
+  ) THEN
+    RAISE EXCEPTION 'لا تكرر المنتج نفسه في أكثر من سطر واحد بالطلب.';
+  END IF;
+
+  -- Release stale stock reservations whenever a new order is created.
+  FOR v_expired_order_id IN
+    SELECT id FROM public.orders
+    WHERE status = 'awaiting_manual_review'::order_status
+      AND reservation_expires_at IS NOT NULL
+      AND reservation_expires_at < NOW()
+    FOR UPDATE
+  LOOP
+    FOR v_expired_item IN
+      SELECT product_id, quantity FROM public.order_items WHERE order_id = v_expired_order_id
+    LOOP
+      UPDATE public.products
+      SET stock_count = stock_count + v_expired_item.quantity, in_stock = true, updated_at = NOW()
+      WHERE id = v_expired_item.product_id;
+    END LOOP;
+    UPDATE public.orders
+    SET status = 'cancelled'::order_status,
+        payment_status = 'rejected'::payment_status,
+        admin_review_notes = 'انتهت مهلة حجز المخزون دون اعتماد الدفع.',
+        reservation_expires_at = NULL,
+        updated_at = NOW()
+    WHERE id = v_expired_order_id;
+  END LOOP;
 
   -- 4. Calculate prices strictly from products table
   FOR v_item IN SELECT * FROM jsonb_array_elements(p_items)
   LOOP
     v_item_qty := COALESCE((v_item->>'quantity')::INT, 1);
-    IF v_item_qty <= 0 THEN
-      RAISE EXCEPTION 'الكمية يجب أن تكون أكبر من صفر.';
+    IF v_item_qty <= 0 OR v_item_qty > 10 THEN
+      RAISE EXCEPTION 'الكمية يجب أن تكون بين 1 و10.';
     END IF;
 
     SELECT * INTO v_product FROM public.products
-    WHERE id = (v_item->>'product_id')::UUID;
+    WHERE id = (v_item->>'product_id')::UUID
+    FOR UPDATE;
 
     IF NOT FOUND THEN
       RAISE EXCEPTION 'المنتج المطلوب غير موجود: %', (v_item->>'product_id');
@@ -510,17 +596,41 @@ BEGIN
       RAISE EXCEPTION 'المنتج غير متوفر حالياً بالمخزون: %', v_product.title_ar;
     END IF;
 
+    IF v_product.product_type <> 'digital'::product_type OR v_product.delivery_type <> p_delivery_type THEN
+      RAISE EXCEPTION 'نوع التسليم لا يطابق إعداد المنتج: %', v_product.title_ar;
+    END IF;
+    IF v_product.stock_count < v_item_qty THEN
+      RAISE EXCEPTION 'الكمية المطلوبة غير متاحة بالمخزون: %', v_product.title_ar;
+    END IF;
+
     v_item_unit_price := v_product.price_usd;
+    IF v_item->>'package_or_variant' IS NOT NULL THEN
+      IF jsonb_typeof(v_product.packages) <> 'array' OR jsonb_array_length(v_product.packages) = 0 THEN
+        RAISE EXCEPTION 'خيارات المنتج غير مسجلة في قاعدة البيانات: %', v_product.title_ar;
+      END IF;
+      SELECT package_row INTO v_package
+      FROM jsonb_array_elements(v_product.packages) AS packages(package_row)
+      WHERE COALESCE(package_row->>'id', package_row->>'name', package_row->>'title') = v_item->>'package_or_variant'
+      LIMIT 1;
+      IF v_package IS NULL THEN
+        RAISE EXCEPTION 'الباقة المطلوبة غير موجودة للمنتج: %', v_product.title_ar;
+      END IF;
+      v_item_unit_price := COALESCE(
+        NULLIF(v_package->>'price_usd', '')::NUMERIC,
+        NULLIF(v_package->>'priceUSD', '')::NUMERIC,
+        NULLIF(v_package->>'price', '')::NUMERIC
+      );
+      IF v_item_unit_price IS NULL OR v_item_unit_price < 0 THEN
+        RAISE EXCEPTION 'سعر الباقة غير صالح في قاعدة البيانات: %', v_product.title_ar;
+      END IF;
+    END IF;
     v_item_total := v_item_unit_price * v_item_qty;
     v_subtotal := v_subtotal + v_item_total;
   END LOOP;
 
-  -- 5. Shipping fee
-  IF p_delivery_type = 'physical_shipment' THEN
-    v_shipping_fee := 6.50;
-  ELSE
-    v_shipping_fee := 0.00;
-  END IF;
+  -- 5. Shipping is zero for digital orders; physical delivery is rejected above
+  -- until a live, server-verified CJ shipping quote is integrated.
+  v_shipping_fee := 0.00;
 
   v_total := v_subtotal + v_shipping_fee;
   v_order_number := 'TRK-' || to_char(NOW(), 'YYYYMMDD') || '-' || upper(substring(md5(random()::text) from 1 for 4));
@@ -549,6 +659,7 @@ BEGIN
     payment_method,
     payment_reference,
     payment_receipt_url,
+    reservation_expires_at,
     delivery_type,
     target_player_id,
     target_player_name,
@@ -568,6 +679,7 @@ BEGIN
     p_payment_method,
     p_payment_reference,
     p_payment_receipt_url,
+    NOW() + INTERVAL '24 hours',
     p_delivery_type,
     p_target_player_id,
     p_target_player_name,
@@ -582,6 +694,18 @@ BEGIN
     v_item_qty := COALESCE((v_item->>'quantity')::INT, 1);
     SELECT * INTO v_product FROM public.products
     WHERE id = (v_item->>'product_id')::UUID;
+    v_item_unit_price := v_product.price_usd;
+    IF v_item->>'package_or_variant' IS NOT NULL THEN
+      SELECT package_row INTO v_package
+      FROM jsonb_array_elements(v_product.packages) AS packages(package_row)
+      WHERE COALESCE(package_row->>'id', package_row->>'name', package_row->>'title') = v_item->>'package_or_variant'
+      LIMIT 1;
+      v_item_unit_price := COALESCE(
+        NULLIF(v_package->>'price_usd', '')::NUMERIC,
+        NULLIF(v_package->>'priceUSD', '')::NUMERIC,
+        NULLIF(v_package->>'price', '')::NUMERIC
+      );
+    END IF;
 
     INSERT INTO public.order_items (
       order_id,
@@ -598,10 +722,16 @@ BEGIN
       v_product.title_ar,
       v_item->>'package_or_variant',
       v_product.cj_sku,
-      v_product.price_usd,
+      v_item_unit_price,
       v_item_qty,
-      v_product.price_usd * v_item_qty
+      v_item_unit_price * v_item_qty
     );
+
+    UPDATE public.products
+    SET stock_count = stock_count - v_item_qty,
+        in_stock = (stock_count - v_item_qty) > 0,
+        updated_at = NOW()
+    WHERE id = v_product.id;
   END LOOP;
 
   RETURN jsonb_build_object(
@@ -638,6 +768,7 @@ AS $$
 DECLARE
   v_admin_id UUID;
   v_order public.orders%ROWTYPE;
+  v_item RECORD;
 BEGIN
   v_admin_id := auth.uid();
   IF v_admin_id IS NULL OR NOT public.is_admin() THEN
@@ -652,6 +783,33 @@ BEGIN
     RAISE EXCEPTION 'الطلب غير موجود: %', p_order_id;
   END IF;
 
+  IF v_order.status <> 'awaiting_manual_review'::order_status
+     OR v_order.payment_status <> 'under_review'::payment_status
+     OR v_order.payment_method NOT IN ('libyana', 'almadar', 'bank_transfer', 'payoneer') THEN
+    RAISE EXCEPTION 'هذا الطلب ليس دفعة يدوية صالحة للمراجعة أو سبق التعامل معه.';
+  END IF;
+
+  IF v_order.reservation_expires_at IS NOT NULL AND v_order.reservation_expires_at < NOW() THEN
+    FOR v_item IN SELECT product_id, quantity FROM public.order_items WHERE order_id = p_order_id
+    LOOP
+      UPDATE public.products
+      SET stock_count = stock_count + v_item.quantity, in_stock = true, updated_at = NOW()
+      WHERE id = v_item.product_id;
+    END LOOP;
+    UPDATE public.orders
+    SET status = 'cancelled'::order_status,
+        payment_status = 'rejected'::payment_status,
+        reviewed_by_admin_id = v_admin_id,
+        reviewed_at = NOW(),
+        reservation_expires_at = NULL,
+        admin_review_notes = 'انتهت مهلة حجز المخزون قبل اعتماد الدفع.',
+        updated_at = NOW()
+    WHERE id = p_order_id;
+    INSERT INTO public.admin_audit_logs (admin_id, action, target_order_id, details)
+    VALUES (v_admin_id, 'expire_manual_payment', p_order_id, jsonb_build_object('order_number', v_order.order_number));
+    RETURN jsonb_build_object('success', false, 'status', 'cancelled', 'message', 'انتهت مهلة الطلب وأعيد المخزون؛ لا يمكن اعتماد الدفع.');
+  END IF;
+
   IF v_order.payment_status = 'captured'::payment_status THEN
     RAISE EXCEPTION 'الطلب معتمد ومدفوع مسبقاً، لا يمكن تكرار الاعتماد.';
   END IF;
@@ -663,6 +821,7 @@ BEGIN
       payment_status = 'captured'::payment_status,
       reviewed_by_admin_id = v_admin_id,
       reviewed_at = NOW(),
+      reservation_expires_at = NULL,
       admin_review_notes = p_notes,
       updated_at = NOW()
     WHERE id = p_order_id;
@@ -678,12 +837,20 @@ BEGIN
     RETURN jsonb_build_object('success', true, 'status', 'processing', 'message', 'تم اعتماد الدفع وتأكيد الطلب بنجاح.');
 
   ELSIF p_decision = 'reject' THEN
+    FOR v_item IN SELECT product_id, quantity FROM public.order_items WHERE order_id = p_order_id
+    LOOP
+      UPDATE public.products
+      SET stock_count = stock_count + v_item.quantity, in_stock = true, updated_at = NOW()
+      WHERE id = v_item.product_id;
+    END LOOP;
+
     UPDATE public.orders
     SET 
       status = 'cancelled'::order_status,
       payment_status = 'rejected'::payment_status,
       reviewed_by_admin_id = v_admin_id,
       reviewed_at = NOW(),
+      reservation_expires_at = NULL,
       admin_review_notes = p_notes,
       updated_at = NOW()
     WHERE id = p_order_id;
@@ -730,3 +897,30 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
+
+-- Explicit browser-role grants: RLS is necessary, but table/column grants are
+-- also required so clients cannot write or read supplier secrets and codes.
+REVOKE ALL ON TABLE public.profiles FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON TABLE public.profiles TO authenticated;
+GRANT UPDATE (name, phone, avatar_url, telegram_username, player_tag)
+  ON TABLE public.profiles TO authenticated;
+
+REVOKE ALL ON TABLE public.products FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON TABLE public.inventory FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON TABLE public.orders FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON TABLE public.orders TO authenticated;
+REVOKE ALL ON TABLE public.order_items FROM PUBLIC, anon, authenticated;
+GRANT SELECT (id, order_id, product_id, product_title, package_or_variant, unit_price_usd, quantity, total_price_usd, created_at)
+  ON TABLE public.order_items TO authenticated;
+REVOKE ALL ON TABLE public.payment_events FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON TABLE public.admin_audit_logs FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON TABLE public.public_catalog TO anon, authenticated;
+
+REVOKE ALL ON FUNCTION public.is_admin() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.is_admin() TO authenticated;
+REVOKE ALL ON FUNCTION public.create_order_atomic(TEXT, TEXT, TEXT, delivery_type, payment_method_type, TEXT, TEXT, TEXT, TEXT, JSONB, JSONB) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.create_order_atomic(TEXT, TEXT, TEXT, delivery_type, payment_method_type, TEXT, TEXT, TEXT, TEXT, JSONB, JSONB) TO authenticated;
+REVOKE ALL ON FUNCTION public.review_manual_payment(UUID, TEXT, TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.review_manual_payment(UUID, TEXT, TEXT) TO authenticated;
+REVOKE ALL ON FUNCTION public.handle_new_user() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.protect_profile_privilege_fields() FROM PUBLIC, anon, authenticated;

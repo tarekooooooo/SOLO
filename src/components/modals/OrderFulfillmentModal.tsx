@@ -23,65 +23,27 @@ export const OrderFulfillmentModal: React.FC = () => {
   const { 
     selectedOrderForFulfillment, 
     setSelectedOrderForFulfillment,
-    fulfillDirectRecharge,
-    fulfillInstantCode,
-    startProcessingOrder,
-    cancelOrder,
-    products,
     formatPrice,
     showToast
   } = useStore();
 
-  const [activeStep, setActiveStep] = useState<number>(1);
-  const [fulfillmentNote, setFulfillmentNote] = useState('');
-  const [manualCode, setManualCode] = useState('');
-  const [apiSimulating, setApiSimulating] = useState(false);
+  const activeStep = 1;
   const [copiedCode, setCopiedCode] = useState(false);
-  const [rechargeSuccess, setRechargeSuccess] = useState(false);
 
   if (!selectedOrderForFulfillment) return null;
 
   const order = selectedOrderForFulfillment;
   const isDirectRecharge = order.deliveryType === 'direct_id_recharge';
-  const targetProduct = products.find((p) => p.id === order.productId);
-  const targetPackage = targetProduct?.packages.find((p) => p.id === order.packageId);
-  const availableStockCodes = targetPackage?.availableCodes || [];
-
   const handleSimulateApiRecharge = () => {
-    setApiSimulating(true);
-    setTimeout(() => {
-      setApiSimulating(false);
-      setRechargeSuccess(true);
-      setFulfillmentNote(`تم الشحن التلقائي بنجاح لمعرف اللاعب: ${order.targetPlayerId} عبر سيرفر الشرق الأوسط.`);
-      showToast('تم التحقق من معرف اللاعب وشحن الشدات بنجاح عبر API! ⚡');
-    }, 1200);
-  };
-
-  const handleCompleteRecharge = () => {
-    fulfillDirectRecharge(order.id, fulfillmentNote);
-    setSelectedOrderForFulfillment(null);
-  };
-
-  const handleCompleteCode = (codeToUse?: string) => {
-    const finalCode = codeToUse || manualCode || (availableStockCodes.length > 0 ? availableStockCodes[0] : '');
-    if (!finalCode) {
-      showToast('يرجى تحديد أو إدخال كود رقمي للتسليم!');
-      return;
-    }
-    fulfillInstantCode(order.id, finalCode, fulfillmentNote);
-    setSelectedOrderForFulfillment(null);
-  };
-
-  const handleCancel = () => {
-    if (confirm(`هل أنت متأكد من إلغاء الطلب ${order.orderNumber} واسترجاع المبلغ للعميل؟`)) {
-      cancelOrder(order.id, 'تم إلغاء الطلب بواسطة إدارة المتجر واسترجاع المبلغ للمحفظة.');
-      setSelectedOrderForFulfillment(null);
-    }
+    showToast('المحاكاة والشحن المباشر متوقفان؛ لم يتم الاتصال بمزود أو شحن الحساب.');
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
       <div className="relative w-full max-w-2xl bg-[#0f172a] border border-cyan-500/30 rounded-2xl shadow-2xl flex flex-col overflow-hidden text-slate-100">
+        <div role="status" className="mx-4 mt-4 rounded-xl border border-amber-500/40 bg-amber-950/30 px-3 py-2 text-xs leading-relaxed text-amber-200">
+          نافذة تجهيز المعاينة فقط. الشحن المباشر وتسليم الأكواد والإلغاء/الاسترداد غير موصولة بقاعدة البيانات، فلا تعتمد الأزرار كتنفيذ فعلي.
+        </div>
         
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 bg-[#0a0f1d] border-b border-slate-800">
@@ -173,15 +135,17 @@ export const OrderFulfillmentModal: React.FC = () => {
                 <div>
                   <span className="text-slate-400 block">معرّف اللعبة (Player ID):</span>
                   <div className="flex items-center gap-2 mt-0.5">
-                    <span className="font-mono font-bold text-cyan-300 text-sm bg-cyan-950/80 px-2.5 py-1 rounded border border-cyan-800">
-                      {order.targetPlayerId || '519284710'}
+                  <span className="font-mono font-bold text-cyan-300 text-sm bg-cyan-950/80 px-2.5 py-1 rounded border border-cyan-800">
+                      {order.targetPlayerId || 'غير مسجل'}
                     </span>
                     <button
                       onClick={() => {
-                        navigator.clipboard?.writeText(order.targetPlayerId || '519284710');
+                        if (!order.targetPlayerId) return;
+                        navigator.clipboard?.writeText(order.targetPlayerId);
                         setCopiedCode(true);
                         setTimeout(() => setCopiedCode(false), 2000);
                       }}
+                      disabled={!order.targetPlayerId}
                       className="p-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300"
                       title="نسخ الآيدي"
                     >
@@ -222,64 +186,32 @@ export const OrderFulfillmentModal: React.FC = () => {
             /* Direct Game ID Recharge Workflow */
             <div className="p-4 rounded-xl bg-slate-900 border border-cyan-500/20 space-y-4">
               <div className="flex items-center justify-between">
-                <h4 className="text-xs font-bold text-slate-200 flex items-center gap-2">
-                  <ShieldCheck className="w-4 h-4 text-cyan-400" />
-                  خيارات شحن حساب اللاعب الفعال:
-                </h4>
-                <span className="text-[11px] text-slate-400 font-mono">PUBG API Direct</span>
+                  <h4 className="text-xs font-bold text-slate-200 flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-cyan-400" />
+                  شحن حساب اللاعب:
+                  </h4>
+                <span className="text-[11px] text-slate-400 font-mono">غير مهيأ</span>
               </div>
 
               {/* Automated Option */}
               <div className="p-3.5 rounded-lg bg-cyan-950/30 border border-cyan-800/40 space-y-2">
                 <div className="flex items-center justify-between">
                   <div className="text-xs">
-                    <span className="font-bold text-white block">1. الشحن التلقائي السريع عبر خادم الـ API</span>
-                    <span className="text-slate-400 text-[11px]">يتم إرسال {order.packageName} مباشرة إلى حساب اللاعب {order.targetPlayerId}</span>
+                    <span className="font-bold text-white block">الشحن المباشر غير متاح</span>
+                  <span className="text-slate-400 text-[11px]">خدمة الشحن المباشر غير مهيأة أو موصولة بمزود فعلي.</span>
                   </div>
                   <button
                     onClick={handleSimulateApiRecharge}
-                    disabled={apiSimulating || rechargeSuccess}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
-                      rechargeSuccess
-                        ? 'bg-emerald-600 text-white'
-                        : apiSimulating
-                        ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
-                        : 'bg-cyan-600 hover:bg-cyan-500 text-white shadow-md shadow-cyan-600/30'
-                    }`}
+                    disabled
+                    className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 bg-slate-700 text-slate-400 cursor-not-allowed"
                   >
-                    {rechargeSuccess ? (
-                      <>
-                        <Check className="w-3.5 h-3.5" />
-                        تم الشحن بنجاح!
-                      </>
-                    ) : apiSimulating ? (
-                      <>
-                        <Clock className="w-3.5 h-3.5 animate-spin" />
-                        جاري الإرسال...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="w-3.5 h-3.5" />
-                        تنفيذ الشحن الآن
-                      </>
-                    )}
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    غير متاح
                   </button>
                 </div>
               </div>
 
-              {/* Notes or verification screenshot */}
-              <div>
-                <label className="text-xs text-slate-400 block mb-1">
-                  ملاحظات التجهيز أو رقم العملية المرجعي (اختياري للعميل):
-                </label>
-                <input
-                  type="text"
-                  value={fulfillmentNote}
-                  onChange={(e) => setFulfillmentNote(e.target.value)}
-                  placeholder="مثال: تم الشحن بنجاح عبر سيرفر الشرق الأوسط برقم مرجعي #99281"
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-cyan-500"
-                />
-              </div>
+              <div className="text-xs text-amber-200">لا توجد خدمة شحن موصولة؛ لم يتم إرسال عملية.</div>
             </div>
           ) : (
             /* Digital Code Pool Fulfillment */
@@ -287,62 +219,12 @@ export const OrderFulfillmentModal: React.FC = () => {
               <div className="flex items-center justify-between">
                 <h4 className="text-xs font-bold text-slate-200 flex items-center gap-2">
                   <Key className="w-4 h-4 text-cyan-400" />
-                  بنك الأكواد الرقمية المتاحة للتسليم:
+                  تسليم الأكواد الرقمية:
                 </h4>
-                <span className="text-[11px] text-cyan-400 font-mono">
-                  {availableStockCodes.length} كود متوفر بالمخزن
-                </span>
+                <span className="text-[11px] text-amber-300 font-mono">غير مهيأ</span>
               </div>
-
-              {availableStockCodes.length > 0 ? (
-                <div className="space-y-2">
-                  <span className="text-[11px] text-slate-400 block">اختر كوداً لتسليمه للعميل بنقرة واحدة:</span>
-                  <div className="grid grid-cols-1 gap-2">
-                    {availableStockCodes.slice(0, 3).map((c, i) => (
-                      <div
-                        key={i}
-                        className="flex items-center justify-between p-2.5 rounded-lg bg-slate-950 border border-slate-800 hover:border-cyan-500/50 transition-colors"
-                      >
-                        <span className="font-mono text-xs font-bold text-cyan-300">{c}</span>
-                        <button
-                          onClick={() => handleCompleteCode(c)}
-                          className="px-3 py-1 bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold rounded transition-colors"
-                        >
-                          تسليم هذا الكود
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <div className="p-3 rounded-lg bg-amber-950/30 border border-amber-800/40 text-xs text-amber-200">
-                  لا توجد أكواد مسبقة في المخزن لهذه الباقة. يمكنك كتابة أو توليد كود مخصص أدناه:
-                </div>
-              )}
-
-              {/* Manual code entry */}
-              <div>
-                <label className="text-xs text-slate-400 block mb-1">
-                  أو أدخل كود تفعيل مخصص / تسليم فوري:
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={manualCode}
-                    onChange={(e) => setManualCode(e.target.value)}
-                    placeholder="مثال: STM-9912-4412-KLP9"
-                    className="flex-1 px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-500"
-                  />
-                  <button
-                    onClick={() => {
-                      const gen = `TRK-${Math.random().toString(36).substring(2, 6).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-                      setManualCode(gen);
-                    }}
-                    className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-lg"
-                  >
-                    توليد كود
-                  </button>
-                </div>
+              <div className="p-3 rounded-lg bg-amber-950/30 border border-amber-800/40 text-xs text-amber-200">
+                لا يوجد مخزون أكواد آمن مرتبط بالخادم. لا تُعرض أكواد المعاينة ولا يمكن تسليمها.
               </div>
             </div>
           )}
@@ -352,11 +234,11 @@ export const OrderFulfillmentModal: React.FC = () => {
         {/* Modal Footer with Actions */}
         <div className="px-6 py-4 bg-[#0a0f1d] border-t border-slate-800 flex items-center justify-between">
           <button
-            onClick={handleCancel}
-            className="px-3.5 py-2 text-xs font-medium text-red-400 hover:text-red-300 hover:bg-red-950/30 rounded-lg transition-colors flex items-center gap-1.5"
+            disabled
+            className="px-3.5 py-2 text-xs font-medium text-slate-500 rounded-lg cursor-not-allowed flex items-center gap-1.5"
           >
             <RotateCcw className="w-3.5 h-3.5" />
-            إلغاء واسترجاع للمحفظة
+            إلغاء/استرداد غير مفعّل
           </button>
 
           <div className="flex items-center gap-2">
@@ -369,19 +251,19 @@ export const OrderFulfillmentModal: React.FC = () => {
 
             {isDirectRecharge ? (
               <button
-                onClick={handleCompleteRecharge}
-                className="px-5 py-2 text-xs font-bold text-white bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 rounded-lg shadow-lg shadow-cyan-600/30 flex items-center gap-1.5 transition-all"
+                disabled
+                className="px-5 py-2 text-xs font-bold text-slate-400 bg-slate-700 rounded-lg flex items-center gap-1.5 cursor-not-allowed"
               >
                 <CheckCircle className="w-4 h-4" />
                 تأكيد اكتمال الشحن وتسليم الطلب
               </button>
             ) : (
               <button
-                onClick={() => handleCompleteCode()}
-                className="px-5 py-2 text-xs font-bold text-white bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 rounded-lg shadow-lg shadow-cyan-600/30 flex items-center gap-1.5 transition-all"
+                disabled
+                className="px-5 py-2 text-xs font-bold text-slate-400 bg-slate-700 rounded-lg flex items-center gap-1.5 cursor-not-allowed"
               >
                 <Send className="w-4 h-4" />
-                إرسال الكود وإكمال الطلب
+                التسليم غير مفعّل
               </button>
             )}
           </div>

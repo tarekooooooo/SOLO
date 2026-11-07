@@ -65,7 +65,7 @@ export const Header: React.FC = () => {
             </div>
             <div>
               <span className="text-xl font-extrabold tracking-wider bg-gradient-to-r from-white via-slate-100 to-cyan-400 bg-clip-text text-transparent">
-                TAREK STOR
+                SOLO
               </span>
               <span className="text-[10px] block font-mono text-cyan-400/80 tracking-widest font-semibold uppercase">
                 SOLO GAMING PLATFORM

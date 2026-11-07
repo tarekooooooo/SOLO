@@ -26,7 +26,7 @@ import {
   Compass,
   ArrowRight
 } from 'lucide-react';
-import { getFunctionUrl } from '../../config/api';
+import { supabaseClient } from '../../lib/supabase';
 
 export const ApiSettingsModal: React.FC = () => {
   const { 
@@ -39,7 +39,8 @@ export const ApiSettingsModal: React.FC = () => {
     fetchRealCjOrders,
     physicalProducts,
     setActiveScreen,
-    showToast 
+    showToast,
+    userRole
   } = useStore();
 
   const [activeTab, setActiveTab] = useState<'cj' | 'google' | 'telegram' | 'guide'>('cj');
@@ -95,21 +96,22 @@ export const ApiSettingsModal: React.FC = () => {
     setIsSearchingCj(true);
     setSearchCjError(null);
     try {
-      const res = await fetch(getFunctionUrl('cj-catalog-search'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ keyword: searchKeyword || 'mouse' }),
+      if (!supabaseClient || userRole !== 'admin') {
+        throw new Error('بحث CJ متاح لمدير مسجل الدخول فقط بعد إعداد Supabase.');
+      }
+      const { data, error } = await supabaseClient.functions.invoke('cj-catalog-search', {
+        body: { keyword: searchKeyword || 'mouse' },
       });
-      const data = await res.json();
-      if (data.success && data.products) {
+      if (error) throw error;
+      if (data?.success && Array.isArray(data.products)) {
         setCjSearchResults(data.products);
-        showToast(`تم العثور على ${data.products.length} منتج برمز SKU حقيقي من CJ!`);
+        showToast(`تم العثور على ${data.products.length} منتج من كتالوج CJ.`);
       } else {
-        setSearchCjError(data.message || 'لم يتم العثور على منتجات');
+        setSearchCjError(data?.message || 'لم يتم العثور على منتجات');
         setCjSearchResults([]);
       }
-    } catch (err: any) {
-      setSearchCjError(err.message);
+    } catch (err: unknown) {
+      setSearchCjError(err instanceof Error ? err.message : 'تعذر البحث في CJ.');
     } finally {
       setIsSearchingCj(false);
     }
@@ -293,7 +295,7 @@ export const ApiSettingsModal: React.FC = () => {
                       <span>{apiConfig.cjConnected ? 'تم التحقق من اتصال CJ 🟢' : 'لم يتم التحقق من اتصال CJ بعد 🟡'}</span>
                     </div>
                     <div className="text-[11px] text-slate-400">
-                      مستودعات الشحن: الصين، السعودية، الإمارات، وأوروبا (CJ Packet Line)
+                      فحص الاتصال لا يؤكد توفر المنتجات أو أسعار الشحن. تكامل الطلبات ما زال معطلاً.
                     </div>
                   </div>
                 </div>
@@ -327,7 +329,7 @@ export const ApiSettingsModal: React.FC = () => {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <PackageCheck className="w-4 h-4 text-blue-400" />
-                      <span className="text-xs font-bold text-white">الطلبات المسترجعة مباشرة من حساب CJ الخاص بك:</span>
+                      <span className="text-xs font-bold text-white">سجلات CJ المسترجعة (قراءة فقط):</span>
                     </div>
                     <span className="text-[11px] text-blue-400 font-mono">
                       {realCjOrdersResult.latencyMs ? `${realCjOrdersResult.latencyMs}ms ⚡` : ''}
@@ -340,13 +342,13 @@ export const ApiSettingsModal: React.FC = () => {
                         {realCjOrdersResult.orders.map((ord: any, idx: number) => (
                           <div key={idx} className="p-2.5 rounded-lg bg-black/40 border border-slate-800 text-xs flex items-center justify-between">
                             <div>
-                              <span className="font-mono font-bold text-cyan-300">{ord.orderNum || ord.cjOrderId || ord.orderId}</span>
-                              <span className="text-slate-400 mr-2 text-[11px]">{ord.createDate || ord.createTime || 'حديث'}</span>
+                              <span className="font-mono font-bold text-cyan-300">{ord.orderNumber || ord.cjOrderId || ord.orderId || '—'}</span>
+                              <span className="text-slate-400 mr-2 text-[11px]">{ord.createdAt || '—'}</span>
                             </div>
                             <div className="flex items-center gap-3">
-                              <span className="text-emerald-400 font-bold">${ord.orderAmount || ord.amount || '0.00'}</span>
+                              <span className="text-slate-400">—</span>
                               <span className="px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 text-[10px]">
-                                {ord.orderStatus || 'معلق'}
+                                {ord.status || 'غير معروف'}
                               </span>
                             </div>
                           </div>
@@ -356,10 +358,10 @@ export const ApiSettingsModal: React.FC = () => {
                       <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-xs text-slate-300 space-y-1">
                         <div className="font-bold text-emerald-400 flex items-center gap-1.5">
                           <CheckCircle className="w-4 h-4" />
-                          <span>تم الاتصال بحسابك في CJ بنجاح! لا توجد طلبات سابقة مسجلة حتى الآن (0 طلبات).</span>
+                          <span>اكتمل الاستعلام ولم تُرجع CJ سجلات ضمن هذه النتيجة (0 سجلات).</span>
                         </div>
                         <p className="text-[11px] text-slate-400">
-                          مفتاحك يعمل بنسبة 100% مع سيرفرات CJ. يمكنك الآن إنشاء أول طلب تجريبي عبر الأداة بالأسفل.
+                          نجاح الاستعلام لا يعني أن إنشاء الطلبات أو الشحن مهيأ. لم يتم إنشاء طلب أو شحنة.
                         </p>
                       </div>
                     )
@@ -444,16 +446,16 @@ export const ApiSettingsModal: React.FC = () => {
                 {cjSearchResults.length > 0 && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 max-h-48 overflow-y-auto">
                     {cjSearchResults.map((prod: any, i: number) => {
-                      const sku = prod.productSku || prod.sku || prod.variantList?.[0]?.variantSku || `CJ-${prod.pid}`;
+                      const sku = typeof prod.sku === 'string' ? prod.sku : '';
                       return (
                         <div key={i} className="p-2.5 rounded-xl bg-black/50 border border-slate-800 flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2 min-w-0">
-                            {prod.productImage && (
-                              <img src={prod.productImage} alt="" className="w-8 h-8 rounded object-cover shrink-0" />
+                            {prod.imageUrl && (
+                              <img src={prod.imageUrl} alt="" className="w-8 h-8 rounded object-cover shrink-0" />
                             )}
                             <div className="min-w-0">
                               <div className="text-[11px] font-bold text-white truncate" dir="ltr">
-                                {prod.productNameEn || prod.productName}
+                                {prod.name || 'منتج من كتالوج CJ'}
                               </div>
                               <div className="text-[10px] text-cyan-400 font-mono">
                                 SKU: {sku}
@@ -466,6 +468,7 @@ export const ApiSettingsModal: React.FC = () => {
                               setCustomSkuInput(sku);
                               showToast(`تم اختيار كود SKU: ${sku}`);
                             }}
+                            disabled={!sku}
                             className="px-2.5 py-1 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-300 text-[10px] font-bold border border-cyan-500/40 shrink-0"
                           >
                             استخدم هذا الـ SKU
@@ -485,9 +488,9 @@ export const ApiSettingsModal: React.FC = () => {
                       <Zap className="w-4 h-4 text-cyan-400" />
                     </div>
                     <div>
-                      <h4 className="text-xs font-bold text-white">3. تجربة شراء طلب وفحص استجابة CJ (Live Purchase Test)</h4>
+                      <h4 className="text-xs font-bold text-white">إنشاء طلب CJ غير متاح حاليًا</h4>
                       <p className="text-[11px] text-slate-400">
-                        أدخل أو اختر رمز SKU حقيقي من CJ، واضغط لتنفيذ طلب شراء حي وإرساله إلى حسابك
+                        لن نرسل طلبًا إلى CJ قبل اكتمال الدفع والتحقق منه على الخادم وتفعيل مسار الشحن الآمن.
                       </p>
                     </div>
                   </div>
@@ -499,7 +502,8 @@ export const ApiSettingsModal: React.FC = () => {
                       type="text"
                       value={customSkuInput}
                       onChange={(e) => setCustomSkuInput(e.target.value)}
-                      placeholder="رمز الـ SKU (مثال: من البحث بالأعلى أو الصق أي كود SKU من cjdropshipping.com)"
+                      disabled
+                      placeholder="إنشاء طلب CJ غير مفعّل"
                       className="w-full px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-white text-xs font-mono focus:border-cyan-500 focus:outline-none"
                       dir="ltr"
                     />
@@ -507,11 +511,11 @@ export const ApiSettingsModal: React.FC = () => {
                   <button
                     type="button"
                     onClick={handleRunTestOrder}
-                    disabled={isTestingOrder}
-                    className="px-5 py-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold text-xs shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 transition-all shrink-0"
+                    disabled
+                    className="px-5 py-2 rounded-xl bg-slate-700 text-slate-400 font-bold text-xs flex items-center justify-center gap-2 cursor-not-allowed shrink-0"
                   >
-                    <Play className={`w-3.5 h-3.5 fill-current ${isTestingOrder ? 'animate-pulse' : ''}`} />
-                    <span>{isTestingOrder ? 'جاري إرسال الطلب إلى CJ...' : 'تنفيذ طلب شراء تجريبي عبر CJ الآن 🚀'}</span>
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    <span>معطل — لم يُرسل أي طلب</span>
                   </button>
                 </div>
 

@@ -35,7 +35,7 @@ export const SplashScreen: React.FC = () => {
 
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight text-white mb-2">
-            TAREK STOR
+            SOLO
           </h1>
           <p className="text-sm font-semibold text-cyan-400 tracking-wider uppercase mb-3">
             SOLO DIGITAL ECOSYSTEM

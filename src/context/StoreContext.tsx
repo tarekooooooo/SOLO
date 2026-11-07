@@ -21,17 +21,61 @@ import {
 import { 
   CURRENCIES, 
   CURRENT_PLAYER_PROFILE, 
-  INITIAL_ASSISTANTS,
-  INITIAL_ORDERS, 
   INITIAL_PRODUCTS, 
-  INITIAL_SUPPORT_TICKETS,
-  INITIAL_TRANSACTIONS,
   DEFAULT_API_CONFIG,
-  INITIAL_AUTH_USER,
-  INITIAL_PHYSICAL_PRODUCTS,
-  INITIAL_PHYSICAL_ORDERS
+  INITIAL_PHYSICAL_PRODUCTS
 } from '../data/mockData';
-import { getFunctionUrl } from '../config/api';
+import { isDatabaseUuid, supabaseClient } from '../lib/supabase';
+
+const CHECKOUT_ENABLED = false;
+
+const mapCatalogProduct = (row: Record<string, unknown>): Product => {
+  const title = String(row.title ?? row.title_ar ?? 'منتج');
+  const rawPackages = Array.isArray(row.packages) ? row.packages : [];
+  const packages = rawPackages.flatMap((value, index) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return [];
+    const item = value as Record<string, unknown>;
+    const rawPrice = item.priceUSD ?? item.price_usd ?? item.price;
+    const priceUSD = Number(rawPrice);
+    if (!Number.isFinite(priceUSD) || priceUSD < 0) return [];
+    return [{
+      id: String(item.id ?? item.package_id ?? `package-${index + 1}`),
+      name: String(item.name ?? item.title ?? `خيار ${index + 1}`),
+      amount: Number(item.amount ?? 1) || 1,
+      priceUSD,
+    }];
+  });
+  const basePrice = Number(row.price_usd);
+  const safePackages = packages.length > 0 ? packages : [{
+    id: 'default',
+    name: title,
+    amount: 1,
+    priceUSD: Number.isFinite(basePrice) && basePrice >= 0 ? basePrice : 0,
+  }];
+  const category = String(row.category ?? 'games') as Product['category'];
+  const validCategories: Product['category'][] = ['games', 'cards', 'game_currency', 'gifts', 'tournaments', 'services'];
+  const platform = String(row.platform ?? 'other') as Product['platform'];
+  const validPlatforms: Product['platform'][] = ['pubg', 'steam', 'playstation', 'xbox', 'freefire', 'roblox', 'other'];
+  const deliveryType = String(row.delivery_type ?? 'manual_service') as Product['deliveryType'];
+  const validDeliveryTypes: Product['deliveryType'][] = ['instant_code', 'direct_id_recharge', 'manual_service'];
+  return {
+    id: String(row.id),
+    title,
+    titleAr: String(row.title_ar ?? title),
+    category: validCategories.includes(category) ? category : 'games',
+    platform: validPlatforms.includes(platform) ? platform : 'other',
+    image: String(row.image_url ?? ''),
+    description: String(row.description ?? ''),
+    rating: Number(row.rating) || 5,
+    deliveryType: validDeliveryTypes.includes(deliveryType) ? deliveryType : 'manual_service',
+    packages: safePackages,
+    merchantId: 'solo',
+    merchantName: 'SOLO',
+    inStock: Boolean(row.in_stock) && Number(row.stock_count) > 0,
+    totalSold: Number(row.total_sold) || 0,
+    createdAt: String(row.created_at ?? new Date().toISOString()),
+  };
+};
 
 interface StoreContextType {
   // Navigation & View
@@ -40,7 +84,6 @@ interface StoreContextType {
   selectedProductId: string;
   setSelectedProductId: (id: string) => void;
   userRole: UserRole;
-  setUserRole: (role: UserRole) => void;
   viewMode: 'desktop' | 'mobile_simulator' | 'guide';
   setViewMode: (mode: 'desktop' | 'mobile_simulator' | 'guide') => void;
   showOriginalDesigns: boolean;
@@ -62,7 +105,7 @@ interface StoreContextType {
   orders: Order[];
   selectedOrderForFulfillment: Order | null;
   setSelectedOrderForFulfillment: (order: Order | null) => void;
-  createOrder: (order: Omit<Order, 'id' | 'orderNumber' | 'date' | 'status'>) => Order;
+  createOrder: (order: Omit<Order, 'id' | 'orderNumber' | 'date' | 'status'> & { idempotencyKey?: string }) => Promise<Order | null>;
   startProcessingOrder: (orderId: string) => void;
   fulfillDirectRecharge: (orderId: string, notes?: string) => void;
   fulfillInstantCode: (orderId: string, code?: string, notes?: string) => void;
@@ -104,7 +147,7 @@ interface StoreContextType {
 
   // Physical Orders & Shipping
   physicalOrders: PhysicalOrder[];
-  createPhysicalOrder: (order: Omit<PhysicalOrder, 'id' | 'orderNumber' | 'createdAt' | 'status'>) => PhysicalOrder;
+  createPhysicalOrder: (order: Omit<PhysicalOrder, 'id' | 'orderNumber' | 'createdAt' | 'status'>) => Promise<PhysicalOrder | null>;
   updatePhysicalOrderStatus: (orderId: string, status: PhysicalOrderStatus, trackingNum?: string) => void;
   syncWithCJ: (orderId: string) => void;
 
@@ -119,11 +162,12 @@ interface StoreContextType {
 
   // Authentication & User Accounts (Google, Telegram, Email)
   currentUser: AuthUser | null;
-  loginWithGoogle: () => void;
-  loginWithTelegram: (username?: string) => void;
-  loginWithEmail: (email: string, pass: string) => void;
-  registerWithEmail: (name: string, email: string, pass: string) => void;
-  logout: () => void;
+  isAuthLoading: boolean;
+  loginWithGoogle: () => Promise<void>;
+  loginWithTelegram: (username?: string) => Promise<void>;
+  loginWithEmail: (email: string, pass: string) => Promise<void>;
+  registerWithEmail: (name: string, email: string, pass: string) => Promise<void>;
+  logout: () => Promise<void>;
 
   // Admin Manual Review (مراجعة واعتماد الحوالات اليدوية ليبيانا/المدار/تحويل/Payoneer/ATLOS)
   reviewManualPayment: (orderId: string, decision: 'approve' | 'reject', notes?: string, isPhysical?: boolean) => Promise<{ success: boolean; message: string }>;
@@ -148,20 +192,20 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const currency = CURRENCIES[currencyCode] || CURRENCIES.USD;
 
   const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
-  const [orders, setOrders] = useState<Order[]>(INITIAL_ORDERS);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [selectedOrderForFulfillment, setSelectedOrderForFulfillment] = useState<Order | null>(null);
 
-  const [customerBalanceUSD, setCustomerBalanceUSD] = useState<number>(45.80);
-  const [merchantBalanceUSD, setMerchantBalanceUSD] = useState<number>(2500.00);
-  const [transactions, setTransactions] = useState<WalletTransaction[]>(INITIAL_TRANSACTIONS);
+  const [customerBalanceUSD, setCustomerBalanceUSD] = useState<number>(0);
+  const [merchantBalanceUSD, setMerchantBalanceUSD] = useState<number>(0);
+  const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
   const [playerProfile, setPlayerProfile] = useState<PlayerProfile>(CURRENT_PLAYER_PROFILE);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Staff Assistants State
-  const [assistants, setAssistants] = useState<StaffAssistant[]>(INITIAL_ASSISTANTS);
+  const [assistants, setAssistants] = useState<StaffAssistant[]>([]);
 
   // Customer Support Tickets State
-  const [supportTickets, setSupportTickets] = useState<SupportTicket[]>(INITIAL_SUPPORT_TICKETS);
+  const [supportTickets, setSupportTickets] = useState<SupportTicket[]>([]);
   const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(null);
 
   // Storefront Dual Mode (المتجر الرقمي والمنتجات المادية جنب بعض)
@@ -171,16 +215,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [physicalProducts, setPhysicalProducts] = useState<PhysicalProduct[]>(INITIAL_PHYSICAL_PRODUCTS);
   const [selectedPhysicalProduct, setSelectedPhysicalProduct] = useState<PhysicalProduct | null>(null);
 
-  // Physical Orders (with localStorage persistence)
-  const [physicalOrders, setPhysicalOrders] = useState<PhysicalOrder[]>(() => {
-    try {
-      const saved = localStorage.getItem('tarek_store_physical_orders');
-      if (saved) return JSON.parse(saved);
-    } catch {
-      // ignore
-    }
-    return INITIAL_PHYSICAL_ORDERS;
-  });
+  // Orders are server-owned. Never hydrate customer/admin orders from localStorage.
+  const [physicalOrders, setPhysicalOrders] = useState<PhysicalOrder[]>([]);
 
   // API Config (CJ Dropshipping, Google, Telegram with localStorage persistence)
   const [apiConfig, setApiConfigState] = useState<ApiIntegrationsConfig>(() => {
@@ -202,7 +238,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [isApiModalOpen, setIsApiModalOpen] = useState<boolean>(false);
 
   // Authentication User State
-  const [currentUser, setCurrentUser] = useState<AuthUser | null>(INITIAL_AUTH_USER);
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -210,6 +247,135 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setToastMessage((prev) => (prev === msg ? null : prev));
     }, 4000);
   };
+
+  useEffect(() => {
+    let active = true;
+    const loadCatalog = async () => {
+      if (!supabaseClient) return;
+      const { data, error } = await supabaseClient
+        .from('public_catalog')
+        .select('id, product_type, title, title_ar, category, platform, image_url, description, delivery_type, price_usd, in_stock, stock_count, total_sold, rating, packages, created_at')
+        .eq('product_type', 'digital')
+        .order('created_at', { ascending: false })
+        .limit(100);
+      if (error) {
+        console.warn('Could not load public catalog:', error.message);
+        return;
+      }
+      if (!active || !Array.isArray(data) || data.length === 0) return;
+      setProducts(data.map((row) => mapCatalogProduct(row as unknown as Record<string, unknown>)));
+    };
+    void loadCatalog();
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const syncAuthenticatedUser = async (authUser: import('@supabase/supabase-js').User | null) => {
+      if (!authUser) {
+        if (active) {
+          setCurrentUser(null);
+          setUserRole('customer');
+          setOrders([]);
+          setPhysicalOrders([]);
+          setIsAuthLoading(false);
+        }
+        return;
+      }
+
+      if (active) {
+        setOrders([]);
+        setPhysicalOrders([]);
+      }
+
+      let profile: { name?: string | null; phone?: string | null; avatar_url?: string | null; telegram_username?: string | null; role?: string | null } | null = null;
+      if (supabaseClient) {
+        const { data } = await supabaseClient
+          .from('profiles')
+          .select('name, phone, avatar_url, telegram_username, role')
+          .eq('id', authUser.id)
+          .maybeSingle();
+        profile = data;
+      }
+
+      if (!active) return;
+      const role: UserRole = profile?.role === 'admin' || profile?.role === 'merchant'
+        ? profile.role
+        : 'customer';
+      const provider = authUser.app_metadata?.provider === 'google' ? 'google' : 'email';
+      setCurrentUser({
+        id: authUser.id,
+        name: profile?.name || authUser.user_metadata?.name || authUser.email?.split('@')[0] || 'مستخدم',
+        email: authUser.email || '',
+        provider,
+        role,
+        avatar: profile?.avatar_url || authUser.user_metadata?.avatar_url || undefined,
+        telegramUsername: profile?.telegram_username || undefined,
+        phone: profile?.phone || authUser.phone || undefined,
+      });
+      setUserRole(role);
+      const { data: orderRows, error: orderError } = await supabaseClient!
+        .from('orders')
+        .select('id, order_number, customer_id, customer_name, customer_email, customer_phone, total_usd, status, payment_status, payment_method, payment_reference, delivery_type, target_player_id, target_player_name, admin_review_notes, created_at, order_items(id, order_id, product_id, product_title, package_or_variant, unit_price_usd, quantity, total_price_usd, created_at)')
+        .order('created_at', { ascending: false })
+        .limit(100);
+      if (active && !orderError && Array.isArray(orderRows)) {
+        const mappedOrders: Order[] = orderRows.map((row: any) => {
+          const firstItem = Array.isArray(row.order_items) ? row.order_items[0] : null;
+          const allowedStatuses: OrderStatus[] = ['pending', 'awaiting_manual_review', 'processing', 'ready_to_deliver', 'completed', 'cancelled'];
+          const status = allowedStatuses.includes(row.status) ? row.status as OrderStatus : 'pending';
+          const allowedDelivery: Order['deliveryType'][] = ['instant_code', 'direct_id_recharge', 'manual_service'];
+          const deliveryType = allowedDelivery.includes(row.delivery_type) ? row.delivery_type as Order['deliveryType'] : 'manual_service';
+          return {
+            id: row.id,
+            orderNumber: row.order_number,
+            customerId: row.customer_id,
+            customerName: row.customer_name,
+            customerEmail: row.customer_email,
+            customerPhone: row.customer_phone || undefined,
+            productId: firstItem?.product_id || '',
+            productName: firstItem?.product_title || 'طلب متجر SOLO',
+            packageId: firstItem?.package_or_variant || 'default',
+            packageName: firstItem?.package_or_variant || 'المنتج',
+            platform: 'other',
+            priceUSD: Number(row.total_usd) || 0,
+            deliveryType,
+            targetPlayerId: row.target_player_id || undefined,
+            targetPlayerName: row.target_player_name || undefined,
+            isGift: false,
+            status,
+            date: row.created_at,
+            fulfillmentNotes: row.admin_review_notes || undefined,
+            paymentMethod: row.payment_method,
+            paymentReference: row.payment_reference || undefined,
+          };
+        });
+        setOrders(mappedOrders);
+      } else if (orderError) {
+        console.warn('Could not load orders:', orderError.message);
+      }
+      setIsAuthLoading(false);
+    };
+
+    if (!supabaseClient) {
+      setCurrentUser(null);
+      setUserRole('customer');
+      setIsAuthLoading(false);
+      return () => { active = false; };
+    }
+
+    void supabaseClient.auth.getSession().then(({ data }) => {
+      void syncAuthenticatedUser(data.session?.user ?? null);
+    });
+    const { data: { subscription } } = supabaseClient.auth.onAuthStateChange((_event, session) => {
+      window.setTimeout(() => void syncAuthenticatedUser(session?.user ?? null), 0);
+    });
+
+    return () => {
+      active = false;
+      subscription.unsubscribe();
+    };
+  }, []);
 
   const setCurrencyCode = (code: CurrencyCode) => {
     setCurrencyCodeState(code);
@@ -226,283 +392,145 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Products Management
   const addProduct = (newProdData: Omit<Product, 'id' | 'createdAt' | 'totalSold'>) => {
-    const newProduct: Product = {
-      ...newProdData,
-      id: `prod-${Date.now()}`,
-      createdAt: new Date().toISOString().split('T')[0],
-      totalSold: 0,
-    };
-    setProducts((prev) => [newProduct, ...prev]);
-    showToast(`تمت إضافة منتج "${newProduct.titleAr}" بنجاح إلى المتجر!`);
+    void newProdData;
+    showToast('إضافة المنتجات غير موصولة بقاعدة البيانات؛ لم يتم حفظ أو نشر أي منتج.');
   };
 
   const updateProduct = (id: string, updates: Partial<Product>) => {
-    setProducts((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, ...updates } : p))
-    );
-    showToast('تم تحديث بيانات المنتج بنجاح.');
+    void id;
+    void updates;
+    showToast('تعديل المنتجات غير موصول بالخادم؛ لم تُحفظ التغييرات.');
   };
 
   const deleteProduct = (id: string) => {
-    setProducts((prev) => prev.filter((p) => p.id !== id));
-    showToast('تم حذف المنتج من المتجر.');
+    void id;
+    showToast('حذف المنتجات غير موصول بالخادم؛ لم يُحذف أي سجل.');
   };
 
   const addCodesToPackage = (productId: string, packageId: string, newCodes: string[]) => {
-    setProducts((prev) =>
-      prev.map((prod) => {
-        if (prod.id !== productId) return prod;
-        return {
-          ...prod,
-          packages: prod.packages.map((pkg) => {
-            if (pkg.id !== packageId) return pkg;
-            return {
-              ...pkg,
-              availableCodes: [...(pkg.availableCodes || []), ...newCodes],
-            };
-          }),
-        };
-      })
-    );
-    showToast(`تم إضافة ${newCodes.length} كود رقمي جديد إلى بنك الأكواد.`);
+    void productId;
+    void packageId;
+    void newCodes;
+    showToast('رفع الأكواد من المتصفح غير آمن ولم يُحفظ. يلزم رفعها عبر وظيفة خادم إلى مخزون خاص.');
   };
 
-  // Orders Management & Fulfillment Pipeline
-  const createOrder = (orderData: Omit<Order, 'id' | 'orderNumber' | 'date' | 'status'>): Order => {
-    const newId = `ord-${Date.now().toString().slice(-4)}`;
-    const isManualOrAtlos = 
-      ['libyana', 'almadar', 'bank_transfer', 'payoneer', 'atlos_crypto'].includes(orderData.paymentMethod as string) ||
-      /ليبيانا|المدار|مصرفي|تحويل|Payoneer|ATLOS|يدوي/i.test(String(orderData.paymentMethod));
+  // Orders are created by the authenticated server function; no local order is a purchase.
+  const createOrder = async (orderData: Omit<Order, 'id' | 'orderNumber' | 'date' | 'status'> & { idempotencyKey?: string }): Promise<Order | null> => {
+    if (!CHECKOUT_ENABLED) {
+      showToast('الشراء غير متاح بعد؛ لا ترسل دفعة حتى يكتمل مخزون وتسليم المنتجات الرقمي.');
+      return null;
+    }
+    if (!supabaseClient || !currentUser) {
+      showToast('يلزم تسجيل الدخول وإعداد Supabase قبل إنشاء طلب حقيقي.');
+      return null;
+    }
+    if (!isDatabaseUuid(orderData.productId)) {
+      showToast('هذا المنتج من كتالوج المعاينة وليس مرتبطًا بسجل منتج في قاعدة البيانات بعد.');
+      return null;
+    }
 
-    const initialStatus: OrderStatus = isManualOrAtlos ? 'awaiting_manual_review' : 'pending';
+    const normalizedMethod = String(orderData.paymentMethod).toLowerCase();
+    const paymentMethod = normalizedMethod.includes('libyana') || normalizedMethod.includes('ليبيانا')
+      ? 'libyana'
+      : normalizedMethod.includes('almadar') || normalizedMethod.includes('المدار')
+        ? 'almadar'
+        : normalizedMethod.includes('bank_transfer') || normalizedMethod.includes('مصرفي') || normalizedMethod.includes('تحويل')
+          ? 'bank_transfer'
+          : normalizedMethod.includes('payoneer')
+            ? 'payoneer'
+            : null;
+
+    if (!paymentMethod) {
+      showToast('هذه وسيلة الدفع غير مفعّلة بعد. المتاح حاليًا هو الدفع اليدوي بعد ربط قاعدة البيانات.');
+      return null;
+    }
+    if (!orderData.paymentReference?.trim()) {
+      showToast('أدخل مرجع التحويل قبل إرسال الطلب للمراجعة.');
+      return null;
+    }
+
+    const { data: sessionData } = await supabaseClient.auth.getSession();
+    if (!sessionData.session) {
+      showToast('انتهت جلسة تسجيل الدخول. سجل الدخول مجددًا ثم أعد المحاولة.');
+      return null;
+    }
+
+    const { data, error } = await supabaseClient.functions.invoke('create-order', {
+      body: {
+        idempotencyKey: orderData.idempotencyKey || crypto.randomUUID(),
+        customerName: orderData.customerName,
+        customerPhone: orderData.customerPhone || null,
+        deliveryType: orderData.deliveryType,
+        paymentMethod,
+        paymentReference: orderData.paymentReference.trim(),
+        targetPlayerId: orderData.targetPlayerId || null,
+        targetPlayerName: orderData.targetPlayerName || null,
+        items: [{
+          productId: orderData.productId,
+          quantity: 1,
+          packageOrVariant: orderData.packageId || null,
+        }],
+      },
+    });
+
+    if (error || !data?.success) {
+      console.error('create-order failed', error || data?.error);
+      showToast('تعذر تسجيل الطلب في الخادم؛ لم يتم إنشاء طلب محلي أو اعتباره مدفوعًا.');
+      return null;
+    }
 
     const newOrder: Order = {
       ...orderData,
-      id: newId,
-      orderNumber: `#TRK-${newId.replace('ord-', '')}`,
-      date: 'الآن',
-      status: initialStatus,
+      id: String(data.order_id),
+      orderNumber: String(data.order_number),
+      priceUSD: Number(data.total_usd),
+      date: new Date().toISOString(),
+      status: 'awaiting_manual_review',
     };
-
     setOrders((prev) => [newOrder, ...prev]);
-
-    // Only deduct customer wallet balance if paid via wallet
-    if (!isManualOrAtlos && String(orderData.paymentMethod).includes('محفظة')) {
-      setCustomerBalanceUSD((prev) => Math.max(0, prev - newOrder.priceUSD));
-      
-      const newTx: WalletTransaction = {
-        id: `tx-${Date.now()}`,
-        type: 'purchase',
-        title: `طلب جديد: ${newOrder.productName} (${newOrder.packageName})`,
-        amountUSD: -newOrder.priceUSD,
-        date: new Date().toISOString().replace('T', ' ').substring(0, 16),
-        status: 'completed',
-        method: newOrder.paymentMethod,
-        orderId: newOrder.orderNumber,
-      };
-      setTransactions((prev) => [newTx, ...prev]);
-    }
-
-    // Auto-deliver instant code ONLY if already confirmed (e.g. wallet paid)
-    // NEVER auto-deliver for manual payment methods or ATLOS until approved by admin
-    if (!isManualOrAtlos) {
-      const targetProduct = products.find((p) => p.id === newOrder.productId);
-      const targetPkg = targetProduct?.packages.find((pkg) => pkg.id === newOrder.packageId);
-
-      if (newOrder.deliveryType === 'instant_code' && targetPkg?.availableCodes && targetPkg.availableCodes.length > 0) {
-        const deliveredCode = targetPkg.availableCodes[0];
-        setTimeout(() => {
-          setOrders((prev) =>
-            prev.map((o) =>
-              o.id === newOrder.id
-                ? {
-                    ...o,
-                    status: 'completed',
-                    assignedCode: deliveredCode,
-                    fulfilledAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
-                    fulfillmentNotes: 'تم التسليم التلقائي الفوري من بنك الأكواد الرقمية بنجاح ⚡',
-                  }
-                : o
-            )
-          );
-          setProducts((prev) =>
-            prev.map((prod) => {
-              if (prod.id !== newOrder.productId) return prod;
-              return {
-                ...prod,
-                packages: prod.packages.map((pkg) => {
-                  if (pkg.id !== newOrder.packageId) return pkg;
-                  return {
-                    ...pkg,
-                    availableCodes: (pkg.availableCodes || []).filter((c) => c !== deliveredCode),
-                  };
-                }),
-              };
-            })
-          );
-        }, 1000);
-      }
-    }
-
-    if (isManualOrAtlos) {
-      showToast(`تم تسجيل الطلب ${newOrder.orderNumber}، وهو الآن "بانتظار مراجعة الإدارة وتدقيق الحوالة" ⏳`);
-    } else {
-      showToast(`تم إنشاء الطلب ${newOrder.orderNumber} بنجاح! جاري التجهيز...`);
-    }
-
+    showToast(`سُجل الطلب ${newOrder.orderNumber} في الخادم وهو بانتظار مراجعة التحويل.`);
     return newOrder;
   };
 
   const startProcessingOrder = (orderId: string) => {
-    setOrders((prev) =>
-      prev.map((o) => (o.id === orderId ? { ...o, status: 'processing' } : o))
-    );
-    showToast(`تم تحويل الطلب إلى "قيد التجهيز والمعالجة".`);
+    void orderId;
+    showToast('لا يمكن تغيير حالة الطلب من المتصفح؛ استخدم إجراء الخادم بعد التحقق من الدفع.');
   };
 
   const fulfillDirectRecharge = (orderId: string, notes?: string) => {
-    setOrders((prev) =>
-      prev.map((o) => {
-        if (o.id !== orderId) return o;
-        return {
-          ...o,
-          status: 'completed',
-          fulfilledAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
-          fulfillmentNotes: notes || `تم شحن الحساب بنجاح لمعرف اللاعب: ${o.targetPlayerId} (${o.targetPlayerName || 'اللاعب'}) 🎮`,
-        };
-      })
-    );
-
-    // Increase merchant balance
-    const targetOrder = orders.find((o) => o.id === orderId);
-    if (targetOrder) {
-      setMerchantBalanceUSD((prev) => prev + targetOrder.priceUSD);
-    }
-
-    showToast('تم شحن حساب العميل بنجاح واكتمال تجهيز الطلب! ✅');
+    void orderId;
+    void notes;
+    showToast('الشحن المباشر غير مربوط بخدمة مورد موثوقة؛ لم يتم تنفيذ الشحن أو إكمال الطلب.');
   };
 
   const fulfillInstantCode = (orderId: string, customCode?: string, notes?: string) => {
-    const targetOrder = orders.find((o) => o.id === orderId);
-    if (!targetOrder) return;
-
-    let codeToDeliver = customCode;
-    if (!codeToDeliver) {
-      // Pick from stock if any
-      const prod = products.find((p) => p.id === targetOrder.productId);
-      const pkg = prod?.packages.find((p) => p.id === targetOrder.packageId);
-      if (pkg?.availableCodes && pkg.availableCodes.length > 0) {
-        codeToDeliver = pkg.availableCodes[0];
-        // remove from available
-        setProducts((prevProds) =>
-          prevProds.map((pr) => {
-            if (pr.id !== targetOrder.productId) return pr;
-            return {
-              ...pr,
-              packages: pr.packages.map((pk) => {
-                if (pk.id !== targetOrder.packageId) return pk;
-                return {
-                  ...pk,
-                  availableCodes: (pk.availableCodes || []).filter((c) => c !== codeToDeliver),
-                };
-              }),
-            };
-          })
-        );
-      } else {
-        codeToDeliver = `TRK-KEY-${Math.random().toString(36).substring(2, 6).toUpperCase()}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-      }
-    }
-
-    setOrders((prev) =>
-      prev.map((o) => {
-        if (o.id !== orderId) return o;
-        return {
-          ...o,
-          status: 'completed',
-          assignedCode: codeToDeliver,
-          fulfilledAt: new Date().toISOString().replace('T', ' ').substring(0, 16),
-          fulfillmentNotes: notes || `تم إرسال الكود الرقمي للعميل: ${codeToDeliver}`,
-        };
-      })
-    );
-
-    setMerchantBalanceUSD((prev) => prev + targetOrder.priceUSD);
-    showToast(`تم تسليم الكود الرقمي (${codeToDeliver}) واكتمال الطلب! 🔑`);
+    void orderId;
+    void customCode;
+    void notes;
+    showToast('تسليم الأكواد غير مفعّل حتى يُربط مخزون الخادم والبريد؛ لم يتم إنشاء أو إرسال كود.');
   };
 
   const cancelOrder = (orderId: string, reason?: string) => {
-    const targetOrder = orders.find((o) => o.id === orderId);
-    if (!targetOrder) return;
-
-    setOrders((prev) =>
-      prev.map((o) =>
-        o.id === orderId
-          ? {
-              ...o,
-              status: 'cancelled',
-              fulfillmentNotes: reason || 'تم إلغاء الطلب واسترجاع المبلغ للعميل.',
-            }
-          : o
-      )
-    );
-
-    // Refund customer balance
-    setCustomerBalanceUSD((prev) => prev + targetOrder.priceUSD);
-
-    // Add refund transaction
-    const refundTx: WalletTransaction = {
-      id: `tx-refund-${Date.now()}`,
-      type: 'deposit',
-      title: `استرجاع رصيد للطلب الملغى ${targetOrder.orderNumber}`,
-      amountUSD: +targetOrder.priceUSD,
-      date: new Date().toISOString().replace('T', ' ').substring(0, 16),
-      status: 'completed',
-      method: 'استرجاع تلقائي للمحفظة',
-      orderId: targetOrder.orderNumber,
-    };
-    setTransactions((prev) => [refundTx, ...prev]);
-
-    showToast(`تم إلغاء الطلب ${targetOrder.orderNumber} واسترجاع المبلغ للمحفظة.`);
+    void orderId;
+    void reason;
+    showToast('إلغاء الطلب أو ردّ المبلغ يحتاجان إجراءً خادميًا متصلًا؛ لم تُغيّر الحالة أو الرصيد.');
   };
 
   const depositToWallet = (amountUSD: number, method: string) => {
-    setCustomerBalanceUSD((prev) => prev + amountUSD);
-    const newTx: WalletTransaction = {
-      id: `tx-dep-${Date.now()}`,
-      type: 'deposit',
-      title: `شحن رصيد المحفظة عبر ${method}`,
-      amountUSD: +amountUSD,
-      date: new Date().toISOString().replace('T', ' ').substring(0, 16),
-      status: 'completed',
-      method,
-    };
-    setTransactions((prev) => [newTx, ...prev]);
-    showToast(`تم شحن المحفظة بنجاح بمبلغ ${formatPrice(amountUSD)}!`);
+    void amountUSD;
+    void method;
+    showToast('شحن المحفظة غير مفعّل؛ لم يُضف أي رصيد.');
   };
 
   const withdrawFromWallet = (amountUSD: number, method: string) => {
-    if (merchantBalanceUSD < amountUSD) {
-      showToast('عفواً، الرصيد المتاح غير كافٍ لعملية السحب.');
-      return;
-    }
-    setMerchantBalanceUSD((prev) => prev - amountUSD);
-    const newTx: WalletTransaction = {
-      id: `tx-wd-${Date.now()}`,
-      type: 'withdrawal',
-      title: `سحب أرباح التاجر عبر ${method}`,
-      amountUSD: -amountUSD,
-      date: new Date().toISOString().replace('T', ' ').substring(0, 16),
-      status: 'completed',
-      method,
-    };
-    setTransactions((prev) => [newTx, ...prev]);
-    showToast(`تم إرسال طلب سحب ${formatPrice(amountUSD)} بنجاح.`);
+    void amountUSD;
+    void method;
+    showToast('السحب غير مفعّل؛ لم يُخصم أو يُرسل أي مبلغ.');
   };
 
   const updatePlayerProfile = (updates: Partial<PlayerProfile>) => {
-    setPlayerProfile((prev) => ({ ...prev, ...updates }));
-    showToast('تم حفظ تعديلات الملف الشخصي بنجاح.');
+    void updates;
+    showToast('تعديل الملف الشخصي غير موصول بقاعدة البيانات؛ لم يتم حفظ أي تغيير.');
   };
 
   // Staff & Assistants Methods
@@ -631,200 +659,96 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const testCjConnection = async (): Promise<{ success: boolean; message: string; latencyMs?: number; data?: any }> => {
-    showToast('جاري فحص الاتصال بسيرفرات CJ Dropshipping عبر الدالة السحابية الآمنة...');
+    if (!supabaseClient || !currentUser || userRole !== 'admin') {
+      const message = 'فحص CJ متاح لمدير مسجل الدخول فقط بعد إعداد Supabase.';
+      showToast(message);
+      return { success: false, message };
+    }
+    showToast('جارٍ فحص الاتصال من الخادم…');
     try {
-      const res = await fetch(getFunctionUrl('cj-verify'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      const data = await res.json();
-      if (data.success) {
+      const { data, error } = await supabaseClient.functions.invoke('cj-verify', { body: {} });
+      if (!error && data?.success) {
         updateApiConfig({ cjConnected: true });
-        showToast(`✅ ${data.message} (${data.latencyMs}ms)`);
+        showToast(`تم التحقق من الاتصال بـCJ (${data.latencyMs}ms).`);
         return data;
       } else {
         updateApiConfig({ cjConnected: false });
-        showToast(`⚠️ ${data.message}`);
-        return data;
+        const message = data?.message || error?.message || 'تعذر التحقق من اتصال CJ.';
+        showToast(message);
+        return { success: false, message };
       }
     } catch (err: unknown) {
       updateApiConfig({ cjConnected: false });
       const message = err instanceof Error ? err.message : 'تعذر الاتصال بوظيفة CJ.';
-      showToast(`⚠️ لم يتم التحقق من اتصال CJ: ${message}`);
+      showToast(`لم يتم التحقق من اتصال CJ: ${message}`);
       return { success: false, message };
     }
   };
 
   const executeCjTestPurchase = async (customProduct?: PhysicalProduct, customSku?: string): Promise<{ success: boolean; order?: PhysicalOrder; message?: string; latencyMs: number; log: any }> => {
-    const targetProduct = customProduct || physicalProducts[0];
-    const targetSku = customSku && customSku.trim() !== '' ? customSku.trim() : targetProduct.cjSku;
-    
-    // SAFE LOCAL SIMULATION ONLY: Never calls real CJ createOrderV2 or payment gateway
-    showToast(`محاكاة فحص محلية آمنة (SKU: ${targetSku}) دون اتصال حقيقي بـ CJ...`);
-    await new Promise((r) => setTimeout(r, 450));
-
-    const simulatedOrder: PhysicalOrder = {
-      id: `sim-${Date.now().toString().slice(-4)}`,
-      orderNumber: `#SIM-${Date.now().toString().slice(-4)}`,
-      customerId: currentUser?.id || 'usr-guest',
-      customerName: currentUser?.name || 'مستخدم تجريبي',
-      customerEmail: currentUser?.email || 'guest@example.com',
-      customerPhone: currentUser?.phone || '+966500000000',
-      productId: targetProduct.id,
-      productTitle: targetProduct.titleAr,
-      productImage: targetProduct.image,
-      selectedVariant: 'محاكاة محلية آمنة (Dry Run)',
-      quantity: 1,
-      priceUSD: targetProduct.priceUSD,
-      shippingFeeUSD: 6.50,
-      totalUSD: targetProduct.priceUSD + 6.50,
-      shippingAddress: {
-        fullName: currentUser?.name || 'مستخدم تجريبي',
-        phone: currentUser?.phone || '+966500000000',
-        country: 'المملكة العربية السعودية',
-        city: 'الرياض',
-        streetAddress: 'شارع تجريبي للاختبار المحلي',
-      },
-      status: 'pending',
-      createdAt: 'الآن (محاكاة محلية)',
-      paymentMethod: 'محاكاة محلية معزولة (Local Test Only)',
-    };
-
-    return {
-      success: true,
-      order: simulatedOrder,
-      message: 'تمت المحاكاة المحلية بنجاح دون إرسال أي طلب أو دفع إلى CJ Dropshipping',
-      latencyMs: 450,
-      log: {
-        mode: 'dry_run_simulation',
-        skuTested: targetSku,
-        note: 'محاكاة معزولة: لا يتم استدعاء CJ createOrderV2 أو الدفع الحقيقي.',
-      },
-    };
+    void customProduct;
+    void customSku;
+    const message = 'شراء الاختبار معطل حتى توفر بيئة CJ sandbox موثقة؛ لم يُنشأ طلب تجريبي أو حقيقي.';
+    showToast(message);
+    return { success: false, message, latencyMs: 0, log: { mode: 'disabled', external_request_sent: false } };
   };
 
   const fetchRealCjOrders = async (): Promise<{ success: boolean; orders: any[]; message: string; latencyMs?: number }> => {
-    showToast('جاري سحب واستعلام الطلبات الحقيقية من حساب CJ عبر الدالة السحابية الآمنة...');
+    if (!supabaseClient || !currentUser || userRole !== 'admin') {
+      const message = 'عرض طلبات CJ متاح لمدير مسجل الدخول فقط بعد إعداد Supabase.';
+      showToast(message);
+      return { success: false, orders: [], message };
+    }
+    showToast('جارٍ جلب قائمة طلبات CJ من الخادم…');
     try {
-      const res = await fetch(getFunctionUrl('cj-orders-list'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      const data = await res.json();
-      if (data.success) {
-        showToast(`✅ تم جلب ${data.ordersCount} طلب من حسابك الفعلي في CJ!`);
+      const { data, error } = await supabaseClient.functions.invoke('cj-orders-list', { body: {} });
+      if (!error && data?.success) {
+        showToast(`تم جلب ${data.ordersCount} سجل من CJ.`);
         return data;
       } else {
-        showToast(`⚠️ ${data.message || data.error}`);
-        return { success: false, orders: [], message: data.message || data.error };
+        const message = data?.message || data?.error || error?.message || 'تعذر جلب الطلبات من CJ.';
+        showToast(message);
+        return { success: false, orders: [], message };
       }
-    } catch (e: any) {
-      showToast(`تعذر الاتصال بـ CJ: ${e.message}`);
-      return { success: false, orders: [], message: e.message };
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : 'تعذر الاتصال بـCJ.';
+      showToast(message);
+      return { success: false, orders: [], message };
     }
   };
 
   // Physical Products Handlers
   const addPhysicalProduct = (newProdData: Omit<PhysicalProduct, 'id' | 'totalSold'>) => {
-    const newProd: PhysicalProduct = {
-      ...newProdData,
-      id: `phys-${Date.now()}`,
-      totalSold: 0,
-    };
-    setPhysicalProducts((prev) => [newProd, ...prev]);
-    showToast(`تمت إضافة منتج "${newProd.titleAr}" إلى متجر المنتجات المادية!`);
+    void newProdData;
+    showToast('إضافة المنتجات المادية غير موصولة بقاعدة البيانات؛ لم يتم حفظ أي منتج.');
   };
 
   const updatePhysicalProduct = (id: string, updates: Partial<PhysicalProduct>) => {
-    setPhysicalProducts((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, ...updates } : p))
-    );
-    showToast('تم تحديث بيانات المنتج بنجاح.');
+    void id;
+    void updates;
+    showToast('تعديل المنتجات المادية غير موصول بالخادم؛ لم تُحفظ التغييرات.');
   };
 
   const deletePhysicalProduct = (id: string) => {
-    setPhysicalProducts((prev) => prev.filter((p) => p.id !== id));
-    showToast('تم حذف المنتج من المتجر المادي.');
+    void id;
+    showToast('حذف المنتجات المادية غير موصول بالخادم؛ لم يُحذف أي سجل.');
   };
 
-  // Physical Orders Handlers
-  const createPhysicalOrder = (orderData: Omit<PhysicalOrder, 'id' | 'orderNumber' | 'createdAt' | 'status'>): PhysicalOrder => {
-    const newId = `pord-${Date.now().toString().slice(-4)}`;
-    const isManualOrAtlos = 
-      ['libyana', 'almadar', 'bank_transfer', 'payoneer', 'atlos_crypto'].includes(orderData.paymentMethod as string) ||
-      /ليبيانا|المدار|مصرفي|تحويل|Payoneer|ATLOS|يدوي/i.test(String(orderData.paymentMethod));
-
-    const initialStatus: PhysicalOrderStatus = isManualOrAtlos 
-      ? 'awaiting_manual_review' 
-      : (apiConfig.autoFulfillWithCJ ? 'cj_syncing' : 'pending');
-
-    const newOrder: PhysicalOrder = {
-      ...orderData,
-      id: newId,
-      orderNumber: `#CJ-ORD-${newId.replace('pord-', '')}`,
-      createdAt: 'الآن',
-      status: initialStatus,
-      cjOrderId: (!isManualOrAtlos && apiConfig.autoFulfillWithCJ) ? `CJ2026${Date.now().toString().slice(-6)}` : undefined,
-      cjTrackingNumber: (!isManualOrAtlos && apiConfig.autoFulfillWithCJ) ? `CJEXP${Math.floor(100000000 + Math.random() * 900000000)}` : undefined,
-      shippingCarrier: 'CJ Packet Fast Line',
-    };
-
-    setPhysicalOrders((prev) => [newOrder, ...prev]);
-
-    // If paid via wallet
-    if (!isManualOrAtlos && orderData.paymentMethod.includes('محفظة')) {
-      setCustomerBalanceUSD((prev) => Math.max(0, prev - newOrder.totalUSD));
-      
-      const newTx: WalletTransaction = {
-        id: `tx-${Date.now()}`,
-        type: 'purchase',
-        title: `شراء شحنة: ${newOrder.productTitle.slice(0, 30)}...`,
-        amountUSD: newOrder.totalUSD,
-        date: 'الآن',
-        status: 'completed',
-        method: newOrder.paymentMethod,
-        orderId: newOrder.orderNumber,
-      };
-      setTransactions((prev) => [newTx, ...prev]);
-    }
-
-    if (isManualOrAtlos) {
-      showToast(`📦 تم إرسال طلب الشحنة ${newOrder.orderNumber}، وهو الآن "بانتظار مراجعة الإدارة للحوالة" قبل التجهيز.`);
-    } else {
-      showToast(`🎉 تم إرسال الطلب ${newOrder.orderNumber} بنجاح! جاري التجهيز والشحن.`);
-    }
-
-    return newOrder;
+  // Physical purchases remain disabled until a real CJ shipping quote and order API are configured.
+  const createPhysicalOrder = async (_orderData: Omit<PhysicalOrder, 'id' | 'orderNumber' | 'createdAt' | 'status'>): Promise<PhysicalOrder | null> => {
+    showToast('الشراء المادي متوقف مؤقتًا: لم يُربط تسعير الشحن وطلب CJ الفعلي بعد. لم يُنشأ طلب.');
+    return null;
   };
 
   const updatePhysicalOrderStatus = (orderId: string, status: PhysicalOrderStatus, trackingNum?: string) => {
-    setPhysicalOrders((prev) =>
-      prev.map((ord) => {
-        if (ord.id !== orderId) return ord;
-        return {
-          ...ord,
-          status,
-          cjTrackingNumber: trackingNum || ord.cjTrackingNumber,
-        };
-      })
-    );
-    showToast(`تم تحديث حالة طلب الشحن #${orderId} إلى: ${status}`);
+    void status;
+    void trackingNum;
+    showToast('لا يمكن تعديل حالة الشحن محليًا؛ يجب تحديثها من خادم CJ بعد تحقق الدفع.');
   };
 
   const syncWithCJ = (orderId: string) => {
-    setPhysicalOrders((prev) =>
-      prev.map((ord) => {
-        if (ord.id !== orderId) return ord;
-        const fakeTrack = `CJTRK${Math.floor(100000000 + Math.random() * 900000000)}SA`;
-        return {
-          ...ord,
-          status: 'shipped',
-          cjTrackingNumber: ord.cjTrackingNumber || fakeTrack,
-          shippingCarrier: 'CJ Logistics Express (شحن سريع)',
-        };
-      })
-    );
-    showToast(`تمت مزامنة الطلب مع CJ Dropshipping بنجاح وإصدار بوليصة الشحن 🚀`);
+    void orderId;
+    showToast('مزامنة CJ غير مفعّلة. لم يُرسل طلب للمورد ولم يُنشأ رقم تتبع.');
   };
 
   // Admin Manual Review Handler (Server & Local Synchronization)
@@ -834,134 +758,93 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     notes?: string,
     isPhysical: boolean = false
   ): Promise<{ success: boolean; message: string }> => {
-    try {
-      // 1. Invoke Supabase Edge Function if user has active session
-      if (currentUser) {
-        try {
-          const res = await fetch(getFunctionUrl('review-manual-payment'), {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${currentUser.id}`,
-            },
-            body: JSON.stringify({ orderId, decision, notes }),
-          });
-          const result = await res.json();
-          if (res.ok && result.success) {
-            console.log('Server review_manual_payment succeeded:', result);
-          }
-        } catch (e) {
-          console.warn('Edge function offline or local mode:', e);
-        }
-      }
-
-      // 2. Update local state
-      if (isPhysical) {
-        setPhysicalOrders((prev) =>
-          prev.map((o) => {
-            if (o.id !== orderId) return o;
-            const newStatus: PhysicalOrderStatus = decision === 'approve' ? 'processing' : 'cancelled';
-            return {
-              ...o,
-              status: newStatus,
-              paymentReference: o.paymentReference 
-                ? `${o.paymentReference} (مراجعة الإدارة: ${decision === 'approve' ? 'معتمد ✅' : 'مرفوض ❌'})`
-                : undefined,
-            };
-          })
-        );
-      } else {
-        setOrders((prev) =>
-          prev.map((o) => {
-            if (o.id !== orderId) return o;
-            const newStatus: OrderStatus = decision === 'approve' ? 'processing' : 'cancelled';
-            return {
-              ...o,
-              status: newStatus,
-              fulfillmentNotes: notes || (decision === 'approve' ? 'تم اعتماد الدفع وتأكيد الحوالة من قبل الإدارة' : 'تم رفض الحوالة وإلغاء الطلب'),
-            };
-          })
-        );
-      }
-
-      const msg = decision === 'approve'
-        ? `✅ تم اعتماد الدفع للطلب ${orderId} بنجاح وتحويله للمعالجة والتجهيز.`
-        : `❌ تم رفض إشعار التحويل وإلغاء الطلب ${orderId}.`;
-      showToast(msg);
-      return { success: true, message: msg };
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'فشلت معالجة مراجعة الدفع';
-      showToast(`⚠️ خطأ: ${msg}`);
-      return { success: false, message: msg };
+    void isPhysical;
+    if (!supabaseClient || !currentUser || userRole !== 'admin') {
+      const message = 'غير مصرح: يلزم دخول مدير حقيقي عبر Supabase.';
+      showToast(message);
+      return { success: false, message };
     }
+
+    const { data: { session } } = await supabaseClient.auth.getSession();
+    if (!session || session.user.id !== currentUser.id) {
+      const message = 'جلسة المدير غير صالحة أو منتهية؛ لم تتغير حالة الطلب.';
+      showToast(message);
+      return { success: false, message };
+    }
+
+    const { data, error } = await supabaseClient.functions.invoke('review-manual-payment', {
+      body: { orderId, decision, notes: notes?.trim() || null },
+    });
+    if (error || !data?.success) {
+      console.error('review-manual-payment failed', error || data?.error);
+      const message = 'رفض الخادم مراجعة الدفع أو تعذر الاتصال؛ لم تتغير الحالة محليًا.';
+      showToast(message);
+      return { success: false, message };
+    }
+
+    const newStatus: OrderStatus = decision === 'approve' ? 'processing' : 'cancelled';
+    if (isPhysical) {
+      const physicalStatus: PhysicalOrderStatus = decision === 'approve' ? 'processing' : 'cancelled';
+      setPhysicalOrders((prev) => prev.map((order) => order.id === orderId ? { ...order, status: physicalStatus } : order));
+    } else {
+      setOrders((prev) => prev.map((order) => order.id === orderId
+        ? { ...order, status: newStatus, fulfillmentNotes: notes?.trim() || undefined }
+        : order));
+    }
+
+    const message = decision === 'approve'
+      ? `تم اعتماد الدفع في الخادم للطلب ${orderId}. لم يتم ادعاء تسليم المنتج.`
+      : `تم رفض إشعار الدفع في الخادم للطلب ${orderId}.`;
+    showToast(message);
+    return { success: true, message };
   };
 
 
   // Auth Handlers
-  const loginWithGoogle = () => {
-    const user: AuthUser = {
-      id: `usr-google-${Date.now().toString().slice(-4)}`,
-      name: 'طارق الأحمد (Google User)',
-      email: 'tarekai042@gmail.com',
+  const loginWithGoogle = async () => {
+    if (!supabaseClient) throw new Error('يجب إعداد VITE_SUPABASE_URL وVITE_SUPABASE_ANON_KEY أولاً.');
+    const { error } = await supabaseClient.auth.signInWithOAuth({
       provider: 'google',
-      role: 'admin',
-      avatar: 'https://images.unsplash.com/photo-1566492031773-4f4e44671857?w=150&auto=format&fit=crop&q=80',
-    };
-    setCurrentUser(user);
-    setUserRole('admin');
-    showToast('تم تسجيل الدخول بنجاح عبر حساب Google الرسمي ✅');
+      options: { redirectTo: window.location.origin },
+    });
+    if (error) throw error;
+  };
+
+  const loginWithTelegram = async (_username?: string) => {
+    throw new Error('تسجيل الدخول عبر Telegram غير موصول بمزوّد مصادقة موثوق؛ لم يتم إنشاء جلسة وهمية.');
+  };
+
+  const loginWithEmail = async (email: string, pass: string) => {
+    if (!supabaseClient) throw new Error('خدمة تسجيل الدخول غير مهيأة؛ أضف متغيرات Supabase العامة إلى Netlify.');
+    const { error } = await supabaseClient.auth.signInWithPassword({ email: email.trim(), password: pass });
+    if (error) throw error;
     setActiveScreen('home');
   };
 
-  const loginWithTelegram = (username = '@TarekStoreUser') => {
-    const user: AuthUser = {
-      id: `usr-tg-${Date.now().toString().slice(-4)}`,
-      name: username.replace('@', ''),
-      email: `${username.replace('@', '').toLowerCase()}@telegram.user`,
-      provider: 'telegram',
-      role: 'customer',
-      telegramUsername: username,
-      avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80',
-    };
-    setCurrentUser(user);
-    showToast(`تم تسجيل الدخول بحساب تيليجرام (${username}) بنجاح ✈️`);
-    setActiveScreen('home');
+  const registerWithEmail = async (name: string, email: string, pass: string) => {
+    if (!supabaseClient) throw new Error('خدمة التسجيل غير مهيأة؛ أضف متغيرات Supabase العامة إلى Netlify.');
+    const { data, error } = await supabaseClient.auth.signUp({
+      email: email.trim(),
+      password: pass,
+      options: {
+        data: { name: name.trim() },
+        emailRedirectTo: window.location.origin,
+      },
+    });
+    if (error) throw error;
+    if (data.session) setActiveScreen('home');
+    else showToast('تم إنشاء الحساب. راجع بريدك الإلكتروني لتأكيده قبل تسجيل الدخول.');
   };
 
-  const loginWithEmail = (email: string, _pass: string) => {
-    const name = email.split('@')[0] || 'مستخدم طارق ستور';
-    const isAdmin = email.toLowerCase().includes('admin') || email.toLowerCase().includes('tarek');
-    const user: AuthUser = {
-      id: `usr-mail-${Date.now().toString().slice(-4)}`,
-      name: isAdmin ? 'طارق الأحمد' : name,
-      email: email,
-      provider: 'email',
-      role: isAdmin ? 'admin' : 'customer',
-      avatar: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?w=150&auto=format&fit=crop&q=80',
-    };
-    setCurrentUser(user);
-    if (isAdmin) setUserRole('admin');
-    showToast(`مرحباً بك مجدداً يا ${user.name}! تم تسجيل الدخول بنجاح.`);
-    setActiveScreen('home');
-  };
-
-  const registerWithEmail = (name: string, email: string, _pass: string) => {
-    const user: AuthUser = {
-      id: `usr-new-${Date.now().toString().slice(-4)}`,
-      name: name,
-      email: email,
-      provider: 'email',
-      role: 'customer',
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-    };
-    setCurrentUser(user);
-    showToast(`أهلاً بك يا ${name}! تم إنشاء حسابك الجديد بنجاح 🎁`);
-    setActiveScreen('home');
-  };
-
-  const logout = () => {
+  const logout = async () => {
+    if (supabaseClient) {
+      const { error } = await supabaseClient.auth.signOut();
+      if (error) throw error;
+    }
     setCurrentUser(null);
-    showToast('تم تسجيل الخروج بنجاح.');
+    setUserRole('customer');
+    setActiveScreen('home');
+    showToast('تم تسجيل الخروج.');
   };
 
   return (
@@ -972,7 +855,6 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         selectedProductId,
         setSelectedProductId,
         userRole,
-        setUserRole,
         viewMode,
         setViewMode,
         showOriginalDesigns,
@@ -1039,6 +921,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
         // Authentication
         currentUser,
+        isAuthLoading,
         loginWithGoogle,
         loginWithTelegram,
         loginWithEmail,

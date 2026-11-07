@@ -1,106 +1,44 @@
-// Supabase Edge Function: cj-orders-list
-// RESTRICTED TO ADMIN USERS ONLY:
-// 1. Verifies caller JWT from Authorization header.
-// 2. Checks caller role in public.profiles table (must be 'admin').
-// 3. Reads CJ_ACCESS_TOKEN strictly from server secrets (never accepts from client).
-
 import { corsHeaders } from '../_shared/cors.ts';
-import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { requireAdmin } from '../_shared/auth.ts';
+
+const jsonHeaders = { ...corsHeaders, 'Content-Type': 'application/json' };
+const shortText = (value: unknown): string | null => typeof value === 'string' ? value.slice(0, 300) : null;
 
 Deno.serve(async (req: Request) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+  if (req.method !== 'POST') {
+    return new Response(JSON.stringify({ success: false, message: 'Method not allowed' }), { status: 405, headers: jsonHeaders });
   }
 
-  const authHeader = req.headers.get('Authorization');
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return new Response(
-      JSON.stringify({ error: 'غير مصرح: يجب تسجيل الدخول كمدير نظام للوصول إلى طلبات CJ' }),
-      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-
-  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-  const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-  const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-  // 1. Verify user session
-  const token = authHeader.replace('Bearer ', '');
-  const { data: { user }, error: authErr } = await supabase.auth.getUser(token);
-
-  if (authErr || !user) {
-    return new Response(
-      JSON.stringify({ error: 'رمز الجلسة غير صالح' }),
-      { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-
-  // 2. Verify admin role on server from profiles table
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single();
-
-  if (profile?.role !== 'admin') {
-    return new Response(
-      JSON.stringify({ error: 'محظور: هذه العملية تتطلب صلاحية مدير النظام (Admin Only)' }),
-      { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
-
-  // 3. Read CJ Token strictly from server secrets
-  const cjToken = Deno.env.get('CJ_ACCESS_TOKEN')?.trim();
-  if (!cjToken) {
-    return new Response(
-      JSON.stringify({
-        success: false,
-        message: 'مفتاح CJ_ACCESS_TOKEN غير مضبوط في أسرار السيرفر',
-      }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  }
+  const auth = await requireAdmin(req);
+  if (!auth.ok) return auth.response;
+  const token = Deno.env.get('CJ_ACCESS_TOKEN')?.trim();
+  if (!token) return new Response(JSON.stringify({ success: false, message: 'رمز CJ غير مضبوط في أسرار Supabase.' }), { status: 503, headers: jsonHeaders });
 
   try {
-    const cjResponse = await fetch(
+    const response = await fetch(
       'https://developers.cjdropshipping.com/api2.0/v1/shopping/order/list?pageNum=1&pageSize=20',
       {
         method: 'GET',
-        headers: {
-          'CJ-Access-Token': cjToken,
-          'Content-Type': 'application/json',
-        },
-      }
+        headers: { 'CJ-Access-Token': token, 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(12000),
+      },
     );
-
-    const data = await cjResponse.json().catch(() => ({}));
-
-    if (data.code === 200 || data.result === true) {
-      const orders = data.data?.list || [];
-      return new Response(
-        JSON.stringify({
-          success: true,
-          ordersCount: orders.length,
-          orders,
-          message: `تم استرجاع ${orders.length} طلب بنجاح من حساب CJ`,
-        }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    } else {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          statusCode: data.code,
-          message: data.message || 'تعذر جلب الطلبات من CJ',
-        }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || (payload?.code !== 200 && payload?.result !== true)) {
+      return new Response(JSON.stringify({ success: false, message: 'تعذر جلب الطلبات من CJ.' }), { status: 502, headers: jsonHeaders });
     }
-  } catch (err: unknown) {
-    const errorMsg = err instanceof Error ? err.message : String(err);
-    return new Response(
-      JSON.stringify({ success: false, message: errorMsg }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+
+    const list = Array.isArray(payload?.data?.list) ? payload.data.list.slice(0, 20) : [];
+    const orders = list.map((order: Record<string, unknown>) => ({
+      orderId: shortText(order.orderId ?? order.id),
+      orderNumber: shortText(order.orderNumber ?? order.orderNum),
+      status: shortText(order.orderStatus ?? order.status),
+      trackingNumber: shortText(order.logisticTrackingNumber ?? order.trackingNumber),
+      createdAt: shortText(order.createDate ?? order.createdAt),
+    }));
+    return new Response(JSON.stringify({ success: true, ordersCount: orders.length, orders }), { status: 200, headers: jsonHeaders });
+  } catch {
+    return new Response(JSON.stringify({ success: false, message: 'تعذر الاتصال بـCJ خلال المهلة المحددة.' }), { status: 502, headers: jsonHeaders });
   }
 });

@@ -36,19 +36,27 @@ export const AuthScreen: React.FC = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [telegramUsernameInput, setTelegramUsernameInput] = useState('@TarekGamer');
   const [showTelegramPrompt, setShowTelegramPrompt] = useState(false);
+  const [authError, setAuthError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (mode === 'login') {
-      if (!email || !password) return;
-      loginWithEmail(email, password);
-    } else if (mode === 'register') {
-      if (!name || !email || !password) return;
-      registerWithEmail(name, email, password);
-    } else {
-      // Forgot password demo
-      alert('تم إرسال رابط إعادة تعيين كلمة المرور إلى بريدك الإلكتروني!');
-      setMode('login');
+    setAuthError('');
+    setIsSubmitting(true);
+    try {
+      if (mode === 'login') {
+        if (!email || !password) return;
+        await loginWithEmail(email, password);
+      } else if (mode === 'register') {
+        if (!name || !email || !password) return;
+        await registerWithEmail(name, email, password);
+      } else {
+        setAuthError('استعادة كلمة المرور غير موصولة بعد. لم نرسل رسالة وهمية.');
+      }
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : 'تعذر إتمام المصادقة.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -56,9 +64,23 @@ export const AuthScreen: React.FC = () => {
     setShowTelegramPrompt(true);
   };
 
-  const confirmTelegramLogin = () => {
-    loginWithTelegram(telegramUsernameInput);
-    setShowTelegramPrompt(false);
+  const confirmTelegramLogin = async () => {
+    try {
+      await loginWithTelegram(telegramUsernameInput);
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : 'تسجيل Telegram غير متاح.');
+    } finally {
+      setShowTelegramPrompt(false);
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    setAuthError('');
+    try {
+      await loginWithGoogle();
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : 'تعذر بدء تسجيل Google.');
+    }
   };
 
   return (
@@ -94,7 +116,7 @@ export const AuthScreen: React.FC = () => {
               الذهاب للتسوق في المتجر
             </button>
             <button
-              onClick={logout}
+              onClick={() => { void logout().catch((error) => setAuthError(error instanceof Error ? error.message : 'تعذر تسجيل الخروج.')); }}
               className="px-4 py-2.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-bold transition-colors"
             >
               تسجيل الخروج
@@ -149,7 +171,7 @@ export const AuthScreen: React.FC = () => {
           {/* Google Sign In */}
           <button
             type="button"
-            onClick={loginWithGoogle}
+            onClick={() => { void handleGoogleLogin(); }}
             className="w-full py-3 px-4 rounded-2xl bg-white hover:bg-slate-100 text-slate-800 font-bold text-xs flex items-center justify-center gap-3 shadow-md transition-transform active:scale-[0.99]"
           >
             <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
@@ -209,6 +231,12 @@ export const AuthScreen: React.FC = () => {
           </span>
         </div>
 
+        {authError && (
+          <div role="alert" className="rounded-xl border border-rose-500/40 bg-rose-950/30 px-3 py-2 text-xs text-rose-200">
+            {authError}
+          </div>
+        )}
+
         {/* Email & Password Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
           {mode === 'register' && (
@@ -259,7 +287,7 @@ export const AuthScreen: React.FC = () => {
             <div className="relative">
               <input
                 type={showPassword ? 'text' : 'password'}
-                required
+                required={mode !== 'forgot'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
@@ -276,12 +304,13 @@ export const AuthScreen: React.FC = () => {
             </div>
           </div>
 
-          <button
-            type="submit"
+              <button
+                type="submit"
+                disabled={isSubmitting}
             className="w-full py-3 rounded-2xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-xs shadow-[0_0_20px_rgba(6,182,212,0.4)] transition-all flex items-center justify-center gap-2"
           >
             <CheckCircle2 className="w-4 h-4" />
-            <span>{mode === 'login' ? 'دخول إلى المتجر' : 'تأكيد إنشاء الحساب'}</span>
+            <span>{isSubmitting ? 'جارٍ التحقق…' : mode === 'login' ? 'دخول إلى المتجر' : 'تأكيد إنشاء الحساب'}</span>
           </button>
         </form>
 

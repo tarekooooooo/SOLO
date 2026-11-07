@@ -39,7 +39,7 @@ Deno.serve(async (req: Request) => {
   });
 
   // Verify token and extract verified user id from session
-  const { data: { user }, error: authErr } = await supabase.auth.getUser();
+  const { data: { user }, error: authErr } = await supabase.auth.getUser(authHeader.slice('Bearer '.length).trim());
   if (authErr || !user) {
     return new Response(
       JSON.stringify({ error: 'جلسة تسجيل الدخول غير صالحة أو منتهية' }),
@@ -54,14 +54,15 @@ Deno.serve(async (req: Request) => {
       customerName,
       customerPhone,
       deliveryType,
+      paymentMethod,
+      paymentReference,
       targetPlayerId,
       targetPlayerName,
-      shippingAddress,
       items,
     } = body;
 
     // Enforce mandatory idempotency key
-    if (!idempotencyKey || typeof idempotencyKey !== 'string' || idempotencyKey.trim().length < 8) {
+    if (!idempotencyKey || typeof idempotencyKey !== 'string' || idempotencyKey.trim().length < 8 || idempotencyKey.trim().length > 128) {
       return new Response(
         JSON.stringify({ error: 'مفتاح عدم التكرار (idempotencyKey) إلزامي وفريد بطول 8 محارف على الأقل' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -75,20 +76,92 @@ Deno.serve(async (req: Request) => {
       );
     }
 
+    const manualMethods = ['libyana', 'almadar', 'bank_transfer', 'payoneer'];
+    if (!manualMethods.includes(paymentMethod)) {
+      return new Response(
+        JSON.stringify({ error: 'وسيلة الدفع غير متاحة حاليًا؛ استخدم إحدى وسائل الدفع اليدوي المعتمدة.' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    if (typeof paymentReference !== 'string' || paymentReference.trim().length < 3 || paymentReference.trim().length > 200) {
+      return new Response(
+        JSON.stringify({ error: 'مرجع التحويل مطلوب ويجب ألا يتجاوز 200 محرف.' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    if (deliveryType === 'physical_shipment') {
+      return new Response(
+        JSON.stringify({ error: 'الطلبات المادية متوقفة حتى احتساب عرض شحن حي من CJ.' }),
+        { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const allowedDeliveryTypes = ['instant_code', 'direct_id_recharge', 'manual_service'];
+    if (!allowedDeliveryTypes.includes(deliveryType)) {
+      return new Response(
+        JSON.stringify({ error: 'نوع التسليم غير صالح.' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    const safeCustomerName = typeof customerName === 'string' ? customerName.trim() : String(user.user_metadata?.name || '').trim();
+    const safeCustomerPhone = customerPhone == null ? null : (typeof customerPhone === 'string' ? customerPhone.trim() : null);
+    if (safeCustomerPhone && safeCustomerPhone.length > 40) {
+      return new Response(
+        JSON.stringify({ error: 'رقم الهاتف أطول من الحد المسموح.' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    for (const field of [targetPlayerId, targetPlayerName]) {
+      if (field != null && (typeof field !== 'string' || field.length > 120)) {
+        return new Response(
+          JSON.stringify({ error: 'بيانات اللاعب غير صالحة.' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
+    const normalizedItems: Array<{ product_id: string; quantity: number; package_or_variant: string | null }> = [];
+    for (const item of items) {
+      const quantity = Number(item?.quantity);
+      if (typeof item?.productId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(item.productId)) {
+        return new Response(
+          JSON.stringify({ error: 'معرّف منتج غير صالح.' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      if (!Number.isInteger(quantity) || quantity < 1 || quantity > 10) {
+        return new Response(
+          JSON.stringify({ error: 'الكمية يجب أن تكون عددًا صحيحًا بين 1 و10.' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      const packageOrVariant = item?.packageOrVariant;
+      if (packageOrVariant != null && (typeof packageOrVariant !== 'string' || packageOrVariant.length > 150)) {
+        return new Response(
+          JSON.stringify({ error: 'خيار المنتج غير صالح.' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      normalizedItems.push({
+        product_id: item.productId,
+        quantity,
+        package_or_variant: packageOrVariant || null,
+      });
+    }
+
     // Call atomic RPC: executes under caller's context with server-side pricing & idempotency
     const { data: result, error: rpcErr } = await supabase.rpc('create_order_atomic', {
       p_idempotency_key: idempotencyKey.trim(),
-      p_customer_name: customerName || user.user_metadata?.name || 'العميل',
-      p_customer_phone: customerPhone || null,
-      p_delivery_type: deliveryType || 'instant_code',
+      p_customer_name: safeCustomerName || 'العميل',
+      p_customer_phone: safeCustomerPhone,
+      p_delivery_type: deliveryType,
+      p_payment_method: paymentMethod,
+      p_payment_reference: paymentReference.trim(),
+      p_payment_receipt_url: null,
       p_target_player_id: targetPlayerId || null,
       p_target_player_name: targetPlayerName || null,
-      p_shipping_address: shippingAddress || null,
-      p_items: items.map((it: any) => ({
-        product_id: it.productId,
-        quantity: Math.max(1, parseInt(it.quantity, 10) || 1),
-        package_or_variant: it.variant || it.package || null,
-      })),
+      p_shipping_address: null,
+      p_items: normalizedItems,
     });
 
     if (rpcErr) {

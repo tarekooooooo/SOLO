@@ -21,8 +21,6 @@ export const GiftScreen: React.FC = () => {
     selectedProductId, 
     setActiveScreen, 
     formatPrice, 
-    createOrder, 
-    customerBalanceUSD, 
     showToast 
   } = useStore();
 
@@ -44,33 +42,7 @@ export const GiftScreen: React.FC = () => {
 
   const handleConfirmGift = (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (customerBalanceUSD < pkg.priceUSD) {
-      showToast('رصيد المحفظة غير كافٍ لإرسال الهدية. يرجى شحن الرصيد أولاً.');
-      setActiveScreen('wallet');
-      return;
-    }
-
-    createOrder({
-      customerId: 'usr-tarek',
-      customerName: `طارق (مرسل هدية إلى ${recipientValue})`,
-      customerEmail: 'tarekai042@gmail.com',
-      productId: product.id,
-      productName: product.titleAr,
-      packageId: pkg.id,
-      packageName: pkg.name,
-      platform: product.platform,
-      priceUSD: pkg.priceUSD,
-      deliveryType: product.deliveryType,
-      targetPlayerId: deliveryMethod === 'id' ? recipientValue : undefined,
-      isGift: true,
-      giftRecipient: `${deliveryMethod.toUpperCase()}: ${recipientValue}`,
-      giftNote: `${giftNote} (المرسل: ${senderName})`,
-      paymentMethod: 'المحفظة الإلكترونية',
-    });
-
-    showToast('تم إرسال الهدية بنجاح! 🎁 سيصل الإشعار للمستلم فوراً.');
-    setActiveScreen('admin');
+    showToast('إرسال الهدايا متوقف حتى ربط خصم المحفظة والتسليم بخدمات الخادم. لم يتم إنشاء الطلب.');
   };
 
   return (

@@ -9,7 +9,7 @@ interface AddProductModalProps {
 }
 
 export const AddProductModal: React.FC<AddProductModalProps> = ({ isOpen, onClose }) => {
-  const { addProduct } = useStore();
+  const { showToast } = useStore();
 
   const [title, setTitle] = useState('');
   const [titleAr, setTitleAr] = useState('');
@@ -22,8 +22,6 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ isOpen, onClos
     { id: 'pkg-1', name: 'باقة أساسية (Basic)', amount: 100, priceUSD: 1.99 },
     { id: 'pkg-2', name: 'باقة مميزة (Plus)', amount: 500, priceUSD: 8.99, bonus: '+50 مجاناً' },
   ]);
-
-  const [newCodesInput, setNewCodesInput] = useState<{ [key: string]: string }>({});
 
   if (!isOpen) return null;
 
@@ -48,37 +46,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ isOpen, onClos
 
   const handleSaveProduct = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!titleAr.trim()) return;
-
-    // Attach any entered codes
-    const finalPackages = packages.map((pkg) => {
-      const rawCodes = newCodesInput[pkg.id] || '';
-      const parsed = rawCodes
-        .split('\n')
-        .map((c) => c.trim())
-        .filter((c) => c.length > 0);
-      return {
-        ...pkg,
-        availableCodes: parsed,
-      };
-    });
-
-    addProduct({
-      title: title || titleAr,
-      titleAr,
-      category,
-      platform,
-      image: '/assets/aistudio/file_000000007e1c81f5ba66efa05ab9f2e5_0ba40384.png',
-      description: description || 'منتج رقمي عالي الجودة مع تسليم فوري وضمان متجر طارق ستور.',
-      rating: 5.0,
-      deliveryType,
-      packages: finalPackages,
-      merchantId: 'm-tarek',
-      merchantName: 'متجر طارق الرسمي',
-      inStock: true,
-    });
-
-    onClose();
+    showToast('إضافة المنتجات غير موصولة بقاعدة البيانات؛ لم يُحفظ أو يُنشر أي منتج.');
   };
 
   return (
@@ -102,6 +70,10 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ isOpen, onClos
           >
             <X className="w-5 h-5" />
           </button>
+        </div>
+
+        <div role="status" className="mx-6 mt-4 rounded-lg border border-amber-500/40 bg-amber-950/30 px-3 py-2 text-xs text-amber-200">
+          هذه واجهة معاينة فقط. لا تدخل أكوادًا حقيقية؛ حفظ المنتجات والمخزون غير مفعّل.
         </div>
 
         {/* Form Body */}
@@ -259,10 +231,10 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ isOpen, onClos
                       </label>
                       <textarea
                         rows={2}
-                        value={newCodesInput[pkg.id] || ''}
-                        onChange={(e) => setNewCodesInput({ ...newCodesInput, [pkg.id]: e.target.value })}
-                        placeholder="CODE-1234-5678&#10;CODE-9876-5432"
-                        className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded text-xs font-mono text-slate-200"
+                        value=""
+                        disabled
+                        placeholder="إدخال الأكواد معطل إلى حين ربط مخزون خادمي آمن"
+                        className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded text-xs font-mono text-slate-500 cursor-not-allowed"
                       />
                     </div>
                   )}
@@ -282,9 +254,10 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ isOpen, onClos
             </button>
             <button
               type="submit"
-              className="px-5 py-2 text-xs font-bold text-white bg-cyan-600 hover:bg-cyan-500 rounded-lg shadow-md shadow-cyan-600/30"
+              disabled
+              className="px-5 py-2 text-xs font-bold text-slate-400 bg-slate-700 rounded-lg cursor-not-allowed"
             >
-              حفظ ونشر المنتج في المتجر
+              الحفظ والنشر غير مفعّلين
             </button>
           </div>
 

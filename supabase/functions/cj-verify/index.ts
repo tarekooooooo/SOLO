@@ -1,73 +1,37 @@
-// Supabase Edge Function: cj-verify
-// Verifies CJ Dropshipping API credentials using server secret CJ_ACCESS_TOKEN.
-// The secret is never exposed to the frontend.
-
 import { corsHeaders } from '../_shared/cors.ts';
+import { requireAdmin } from '../_shared/auth.ts';
+
+const jsonHeaders = { ...corsHeaders, 'Content-Type': 'application/json' };
 
 Deno.serve(async (req: Request) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+  if (req.method !== 'POST') {
+    return new Response(JSON.stringify({ success: false, message: 'Method not allowed' }), { status: 405, headers: jsonHeaders });
   }
 
-  const startTime = Date.now();
-  // Read CJ Token securely from Supabase Vault / Environment Secrets only
-  const cjToken = Deno.env.get('CJ_ACCESS_TOKEN')?.trim();
+  const auth = await requireAdmin(req);
+  if (!auth.ok) return auth.response;
 
-  if (!cjToken) {
-    return new Response(
-      JSON.stringify({
-        success: false,
-        message: 'مفتاح CJ_ACCESS_TOKEN غير مضبوط في أسرار Supabase (Supabase Vault)',
-      }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+  const token = Deno.env.get('CJ_ACCESS_TOKEN')?.trim();
+  if (!token) {
+    return new Response(JSON.stringify({ success: false, message: 'رمز CJ غير مضبوط في أسرار Supabase.' }), { status: 503, headers: jsonHeaders });
   }
 
+  const startedAt = Date.now();
   try {
-    const cjResponse = await fetch(
+    const response = await fetch(
       'https://developers.cjdropshipping.com/api2.0/v1/shopping/order/list?pageNum=1&pageSize=1',
-      {
-        method: 'GET',
-        headers: {
-          'CJ-Access-Token': cjToken,
-          'Content-Type': 'application/json',
-        },
-      }
+      { method: 'GET', headers: { 'CJ-Access-Token': token, 'Content-Type': 'application/json' }, signal: AbortSignal.timeout(12000) },
     );
-
-    const latency = Date.now() - startTime;
-    const data = await cjResponse.json().catch(() => ({}));
-
-    if (cjResponse.ok && (data.code === 200 || data.result === true)) {
-      return new Response(
-        JSON.stringify({
-          success: true,
-          latencyMs: latency,
-          message: 'تم التحقق بنجاح من مفتاح CJ المحفوظ في أسرار السيرفر!',
-          keyMasked: `****...${cjToken.slice(-4)}`,
-        }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    } else {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          latencyMs: latency,
-          statusCode: data?.code || cjResponse.status,
-          message: data?.message || 'فشل التحقق من مفتاح CJ',
-          rawResponse: data,
-        }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-  } catch (err: unknown) {
-    const errorMsg = err instanceof Error ? err.message : String(err);
-    return new Response(
-      JSON.stringify({
-        success: false,
-        message: `تعذر الاتصال بسيرفر CJ: ${errorMsg}`,
-      }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    const payload = await response.json().catch(() => ({}));
+    const accepted = response.ok && (payload?.code === 200 || payload?.result === true);
+    return new Response(JSON.stringify({
+      success: accepted,
+      latencyMs: Date.now() - startedAt,
+      message: accepted ? 'تم التحقق من اتصال CJ من جهة الخادم.' : 'رفض CJ الطلب أو تعذر التحقق من بيانات الاتصال.',
+      statusCode: accepted ? undefined : response.status,
+    }), { status: accepted ? 200 : 502, headers: jsonHeaders });
+  } catch {
+    return new Response(JSON.stringify({ success: false, message: 'تعذر الاتصال بـCJ خلال المهلة المحددة.' }), { status: 502, headers: jsonHeaders });
   }
 });

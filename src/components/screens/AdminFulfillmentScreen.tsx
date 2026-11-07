@@ -105,6 +105,9 @@ export const AdminFulfillmentScreen: React.FC = () => {
 
   return (
     <div className="space-y-6 pb-12">
+      <div role="status" className="rounded-xl border border-amber-500/40 bg-amber-950/30 px-4 py-3 text-xs leading-relaxed text-amber-200">
+        اعتمادات الدفع اليدوي تتحقق من سجل الطلب فقط. الموافقة لا ترسل كودًا رقميًا ولا تنشئ شحنة CJ تلقائيًا؛ تحقّق من التحويل خارج النظام قبل أي اعتماد.
+      </div>
       
       {/* Top Header matching Screen 11 in mockup */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -148,8 +151,8 @@ export const AdminFulfillmentScreen: React.FC = () => {
             <span>عدد المستخدمين</span>
             <Users className="w-4 h-4 text-cyan-400" />
           </div>
-          <div className="text-xl sm:text-2xl font-black font-mono text-white">880</div>
-          <span className="text-[10px] text-slate-400 block font-mono">+42 مستخدم جديد هذا الأسبوع</span>
+          <div className="text-xl sm:text-2xl font-black font-mono text-white">غير متاح</div>
+          <span className="text-[10px] text-slate-400 block">قائمة العملاء غير موصولة بلوحة الإدارة</span>
         </div>
 
         <div className="p-4 rounded-2xl bg-[#0f1523] border border-cyan-500/20 space-y-1">
@@ -160,16 +163,16 @@ export const AdminFulfillmentScreen: React.FC = () => {
           <div className="text-xl sm:text-2xl font-black font-mono text-amber-400">
             {assistants.filter((a) => a.status === 'active').length} مساعدين
           </div>
-          <span className="text-[10px] text-amber-400/80 block">تغطية تجهيز على مدار الساعة</span>
+          <span className="text-[10px] text-amber-400/80 block">بيانات محلية غير متزامنة مع الخادم</span>
         </div>
 
         <div className="p-4 rounded-2xl bg-[#0f1523] border border-cyan-500/20 space-y-1">
           <div className="flex items-center justify-between text-xs text-slate-400">
-            <span>الطلبات اليوم</span>
+            <span>الطلبات المحمّلة</span>
             <ShoppingBag className="w-4 h-4 text-emerald-400" />
           </div>
-          <div className="text-xl sm:text-2xl font-black font-mono text-emerald-400">1,200</div>
-          <span className="text-[10px] text-emerald-400/80 block">معدل تنفيذ 99.4%</span>
+          <div className="text-xl sm:text-2xl font-black font-mono text-emerald-400">{orders.length}</div>
+          <span className="text-[10px] text-emerald-400/80 block">طلبات محمّلة حاليًا</span>
         </div>
 
         <div className="p-4 rounded-2xl bg-[#0f1523] border border-cyan-500/20 space-y-1">
@@ -178,9 +181,9 @@ export const AdminFulfillmentScreen: React.FC = () => {
             <Headphones className="w-4 h-4 text-indigo-400" />
           </div>
           <div className="text-xl sm:text-2xl font-black font-mono text-indigo-400">
-            {openTicketsCount} نشطة
+            غير متاح
           </div>
-          <span className="text-[10px] text-cyan-400 block font-semibold">متوسط الرد: أقل من دقيقة</span>
+          <span className="text-[10px] text-cyan-400 block font-semibold">خدمة التذاكر غير موصولة بقاعدة البيانات</span>
         </div>
       </div>
 

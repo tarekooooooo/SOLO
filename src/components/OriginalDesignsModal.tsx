@@ -115,7 +115,7 @@ export const OriginalDesignsModal: React.FC = () => {
                 className="w-20 h-20 rounded-xl object-contain bg-black/40 p-2 border border-cyan-500/20"
               />
               <div>
-                <h4 className="text-sm font-bold text-white">هوية المتجر SOLO / TAREK STOR</h4>
+                <h4 className="text-sm font-bold text-white">هوية المتجر SOLO</h4>
                 <p className="text-xs text-slate-400 mt-1">متجرك للمنتجات والخدمات الرقمية وشحن الألعاب والبطاقات</p>
               </div>
             </div>

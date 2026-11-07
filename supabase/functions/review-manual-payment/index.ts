@@ -25,7 +25,7 @@ Deno.serve(async (req: Request) => {
   }
 
   const authHeader = req.headers.get('Authorization');
-  if (!authHeader) {
+  if (!authHeader?.startsWith('Bearer ')) {
     return new Response(JSON.stringify({ error: 'رمز الجلسة مفقود (Missing Authorization Header)' }), {
       status: 401,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -41,7 +41,7 @@ Deno.serve(async (req: Request) => {
   });
 
   try {
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+    const { data: { user }, error: userError } = await supabase.auth.getUser(authHeader.slice('Bearer '.length).trim());
     if (userError || !user) {
       return new Response(JSON.stringify({ error: 'جلسة المستخدم غير صالحة أو منتهية' }), {
         status: 401,

@@ -5,7 +5,6 @@ import { HomeScreen } from './components/screens/HomeScreen';
 import { PhysicalStoreScreen } from './components/screens/PhysicalStoreScreen';
 import { AuthScreen } from './components/screens/AuthScreen';
 import { SplashScreen } from './components/screens/SplashScreen';
-import { LoginScreen } from './components/screens/LoginScreen';
 import { ProductDetailScreen } from './components/screens/ProductDetailScreen';
 import { GiftScreen } from './components/screens/GiftScreen';
 import { WalletScreen } from './components/screens/WalletScreen';
@@ -48,15 +47,27 @@ const MainLayout: React.FC = () => {
     toastMessage, 
     setShowOriginalDesigns,
     storefrontMode,
-    setIsApiModalOpen
+    setIsApiModalOpen,
+    currentUser,
+    userRole,
+    isAuthLoading
   } = useStore();
 
   const renderActiveScreenContent = () => {
+    if (isAuthLoading && (activeScreen === 'admin' || activeScreen === 'merchant')) {
+      return <div className="py-20 text-center text-cyan-300">جارٍ التحقق من صلاحية الحساب…</div>;
+    }
+    if (activeScreen === 'admin' && (!currentUser || userRole !== 'admin')) {
+      return <AuthScreen />;
+    }
+    if (activeScreen === 'merchant' && (!currentUser || (userRole !== 'merchant' && userRole !== 'admin'))) {
+      return <AuthScreen />;
+    }
     switch (activeScreen) {
       case 'splash':
         return <SplashScreen />;
       case 'login':
-        return <LoginScreen />;
+        return <AuthScreen />;
       case 'auth':
         return <AuthScreen />;
       case 'physical_store':
@@ -94,6 +105,10 @@ const MainLayout: React.FC = () => {
       {/* Top Bar following Top Bar Contract */}
       <Header />
 
+      <div role="status" className="border-b border-amber-500/30 bg-amber-950/40 px-4 py-2 text-center text-xs leading-relaxed text-amber-200">
+        SOLO في وضع المعاينة والإعداد. لا توجد معاملات أو عمليات تسليم مفعّلة؛ لا ترسل أي دفعة حتى إعلان جاهزية المتجر.
+      </div>
+
       {/* Floating Notification Toast */}
       {toastMessage && (
         <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-top-4 duration-200">
@@ -117,10 +132,10 @@ const MainLayout: React.FC = () => {
               { id: 'physical_store', label: '📦 عتاد CJ المادي (الدروب شيبينج)', isSpecial: true },
               { id: 'home', label: '🏪 المتجر الرقمي' },
               { id: 'auth', label: '🔐 تسجيل الدخول (Google/Telegram)', isSpecial: true },
-              { id: 'admin', label: '👑 لوحة الإدمن والمساعدين (11)', isSpecial: true },
+              ...(userRole === 'admin' ? [{ id: 'admin', label: '👑 لوحة الإدمن والمساعدين (11)', isSpecial: true }] : []),
               { id: 'profile', label: '👤 صفحة الملف الشخصي (9)', isSpecial: true },
               { id: 'support', label: '🎧 خدمة العملاء والدعم', isSpecial: true },
-              { id: 'merchant', label: '📦 إدارة المنتجات (10)' },
+              ...(userRole === 'admin' || userRole === 'merchant' ? [{ id: 'merchant', label: '📦 إدارة المنتجات (10)' }] : []),
               { id: 'product', label: 'المنتج (4)' },
               { id: 'gift', label: 'الهدية (5)' },
               { id: 'wallet', label: 'المحفظة (6)' },
@@ -223,7 +238,7 @@ const MainLayout: React.FC = () => {
           {/* Footer Brand line */}
           <div className="pt-6 border-t border-slate-800/80 flex flex-col sm:flex-row items-center justify-between text-xs text-slate-500 gap-4">
             <div className="flex items-center gap-3">
-              <span className="text-white font-extrabold tracking-wider">TAREK STOR / SOLO</span>
+              <span className="text-white font-extrabold tracking-wider">SOLO</span>
               <span>•</span>
               <span>Play • Shop • Compete • Earn</span>
             </div>

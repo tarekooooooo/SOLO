@@ -28,14 +28,14 @@ interface PhysicalProductDetailModalProps {
 }
 
 const ARAB_COUNTRIES = [
-  { code: 'SA', name: 'المملكة العربية السعودية', baseShipping: 6.50, days: '4 - 7 أيام' },
-  { code: 'AE', name: 'الإمارات العربية المتحدة', baseShipping: 5.80, days: '4 - 6 أيام' },
-  { code: 'KW', name: 'دولة الكويت', baseShipping: 5.00, days: '4 - 7 أيام' },
-  { code: 'QA', name: 'دولة قطر', baseShipping: 6.00, days: '5 - 7 أيام' },
-  { code: 'BH', name: 'مملكة البحرين', baseShipping: 5.50, days: '4 - 6 أيام' },
-  { code: 'OM', name: 'سلطنة عمان', baseShipping: 6.20, days: '5 - 8 أيام' },
-  { code: 'EG', name: 'جمهورية مصر العربية', baseShipping: 7.50, days: '6 - 10 أيام' },
-  { code: 'JO', name: 'المملكة الأردنية الهاشمية', baseShipping: 7.00, days: '6 - 9 أيام' },
+  { code: 'SA', name: 'المملكة العربية السعودية', baseShipping: 0, days: 'غير متاح مؤقتًا' },
+  { code: 'AE', name: 'الإمارات العربية المتحدة', baseShipping: 0, days: 'غير متاح مؤقتًا' },
+  { code: 'KW', name: 'دولة الكويت', baseShipping: 0, days: 'غير متاح مؤقتًا' },
+  { code: 'QA', name: 'دولة قطر', baseShipping: 0, days: 'غير متاح مؤقتًا' },
+  { code: 'BH', name: 'مملكة البحرين', baseShipping: 0, days: 'غير متاح مؤقتًا' },
+  { code: 'OM', name: 'سلطنة عمان', baseShipping: 0, days: 'غير متاح مؤقتًا' },
+  { code: 'EG', name: 'جمهورية مصر العربية', baseShipping: 0, days: 'غير متاح مؤقتًا' },
+  { code: 'JO', name: 'المملكة الأردنية الهاشمية', baseShipping: 0, days: 'غير متاح مؤقتًا' },
 ];
 
 export const PhysicalProductDetailModal: React.FC<PhysicalProductDetailModalProps> = ({
@@ -64,7 +64,7 @@ export const PhysicalProductDetailModal: React.FC<PhysicalProductDetailModalProp
   const [streetAddress, setStreetAddress] = useState('طريق أنس بن مالك، مبنى 22');
   const [postalCode, setPostalCode] = useState('13524');
   const [notes, setNotes] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('wallet');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('libyana');
   const [paymentReference, setPaymentReference] = useState('');
   const [placedOrderNumber, setPlacedOrderNumber] = useState('');
 
@@ -88,7 +88,11 @@ export const PhysicalProductDetailModal: React.FC<PhysicalProductDetailModalProp
 
   const isManualPayment = ['libyana', 'almadar', 'bank_transfer', 'payoneer'].includes(paymentMethod);
 
-  const handlePlaceOrder = () => {
+  const handlePlaceOrder = async () => {
+    if (!currentUser) {
+      showToast('سجل الدخول قبل تقديم طلب.');
+      return;
+    }
     if (!fullName || !phone || !city || !streetAddress) {
       showToast('يرجى تعبئة جميع بيانات الشحن الإلزامية');
       return;
@@ -124,10 +128,10 @@ export const PhysicalProductDetailModal: React.FC<PhysicalProductDetailModalProp
       payoneer: 'حساب Payoneer (دفع يدوي)',
     };
 
-    const newOrder = createPhysicalOrder({
-      customerId: currentUser?.id || 'guest-user',
+    const newOrder = await createPhysicalOrder({
+      customerId: currentUser.id,
       customerName: fullName,
-      customerEmail: currentUser?.email || 'customer@tarekstore.com',
+      customerEmail: currentUser.email,
       customerPhone: phone,
       productId: product.id,
       productTitle: product.titleAr,
@@ -142,6 +146,7 @@ export const PhysicalProductDetailModal: React.FC<PhysicalProductDetailModalProp
       paymentReference: paymentReference.trim() || undefined,
     });
 
+    if (!newOrder) return;
     setPlacedOrderNumber(newOrder.orderNumber);
     setActiveStep('success');
   };
@@ -241,6 +246,9 @@ export const PhysicalProductDetailModal: React.FC<PhysicalProductDetailModalProp
 
               {/* Right Column: Product Specs & Options */}
               <div className="md:col-span-7 space-y-5">
+                <div role="status" className="rounded-xl border border-amber-500/40 bg-amber-950/30 px-3 py-2 text-xs leading-relaxed text-amber-200">
+                  شراء المنتجات المادية متوقف حاليًا. لا يوجد عرض شحن حي أو تأكيد طلب من CJ، لذا لا تُرسل دفعة ولا تعتمد الأسعار أو المواعيد الظاهرة كعرض نهائي.
+                </div>
                 {/* Price Display */}
                 <div className="flex items-baseline gap-3 p-4 rounded-xl bg-slate-900/70 border border-slate-800">
                   <span className="text-3xl font-extrabold text-cyan-400">
@@ -500,8 +508,8 @@ export const PhysicalProductDetailModal: React.FC<PhysicalProductDetailModalProp
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 text-xs">
                   <button
                     type="button"
-                    onClick={() => setPaymentMethod('wallet')}
-                    className={`p-3 rounded-xl border text-right transition-all ${
+                    disabled
+                    className={`p-3 rounded-xl border text-right opacity-50 cursor-not-allowed ${
                       paymentMethod === 'wallet'
                         ? 'border-cyan-400 bg-cyan-500/10 text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.2)]'
                         : 'border-slate-800 bg-slate-800/60 text-slate-300 hover:border-slate-700'
@@ -509,7 +517,7 @@ export const PhysicalProductDetailModal: React.FC<PhysicalProductDetailModalProp
                   >
                     <div className="flex items-center justify-between mb-1">
                       <Wallet className="w-4 h-4 text-cyan-400" />
-                      <span className="text-[10px] text-slate-400 font-mono">{formatPrice(customerBalanceUSD)}</span>
+                      <span className="text-[10px] text-slate-400">غير مفعلة</span>
                     </div>
                     <div className="font-bold">المحفظة الإلكترونية</div>
                     <div className="text-[10px] text-slate-400 mt-0.5">خصم فوري مباشر</div>
@@ -517,8 +525,8 @@ export const PhysicalProductDetailModal: React.FC<PhysicalProductDetailModalProp
 
                   <button
                     type="button"
-                    onClick={() => setPaymentMethod('atlos_crypto')}
-                    className={`p-3 rounded-xl border text-right transition-all ${
+                    disabled
+                    className={`p-3 rounded-xl border text-right opacity-50 cursor-not-allowed ${
                       paymentMethod === 'atlos_crypto'
                         ? 'border-cyan-400 bg-cyan-500/10 text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.2)]'
                         : 'border-slate-800 bg-slate-800/60 text-slate-300 hover:border-slate-700'
@@ -526,7 +534,7 @@ export const PhysicalProductDetailModal: React.FC<PhysicalProductDetailModalProp
                   >
                     <div className="flex items-center justify-between mb-1">
                       <Coins className="w-4 h-4 text-amber-400" />
-                      <span className="text-[10px] text-amber-400 font-mono">ATLOS Crypto</span>
+                      <span className="text-[10px] text-slate-400">غير مفعلة</span>
                     </div>
                     <div className="font-bold">بوابة ATLOS المشفرة</div>
                     <div className="text-[10px] text-slate-400 mt-0.5">USDT / BTC / ETH</div>
@@ -631,7 +639,7 @@ export const PhysicalProductDetailModal: React.FC<PhysicalProductDetailModalProp
                   <div className="p-3.5 rounded-xl bg-cyan-950/30 border border-cyan-500/30 text-xs text-cyan-200 flex items-start gap-2">
                     <Coins className="w-4 h-4 mt-0.5 shrink-0 text-cyan-400" />
                     <p className="leading-relaxed">
-                      <strong>بوابة ATLOS المشفرة:</strong> تدعم الإيداع المباشر عبر USDT (TRC20/ERC20) والعملات المشفرة. يتم التحقق خادمياً من صحة توقيع HMAC والـ Webhook قبل اعتماد الدفع تلقائياً.
+                      <strong>بوابة ATLOS:</strong> غير مفعّلة؛ لا تقبل الصفحة أي دفعات مشفرة ولا تتحقق من Webhook حاليًا.
                     </p>
                   </div>
                 )}
@@ -647,10 +655,11 @@ export const PhysicalProductDetailModal: React.FC<PhysicalProductDetailModalProp
                 <button
                   type="button"
                   onClick={handlePlaceOrder}
-                  className="px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold text-sm shadow-[0_0_20px_rgba(16,185,129,0.4)] transition-all flex items-center gap-2"
+                  disabled
+                  className="px-6 py-3 rounded-xl bg-slate-700 text-slate-300 font-bold text-sm opacity-60 cursor-not-allowed flex items-center gap-2"
                 >
                   <CheckCircle2 className="w-5 h-5" />
-                  <span>تأكيد الطلب وشحنه الآن عبر CJ</span>
+                  <span>الشراء غير متاح — بانتظار تكامل CJ</span>
                 </button>
               </div>
             </div>

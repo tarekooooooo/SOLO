@@ -28,7 +28,6 @@ export const MerchantDashboardScreen: React.FC = () => {
     deleteProduct, 
     addCodesToPackage, 
     formatPrice, 
-    merchantBalanceUSD, 
     orders,
     setActiveScreen,
     setSelectedOrderForFulfillment,
@@ -45,13 +44,11 @@ export const MerchantDashboardScreen: React.FC = () => {
 
   const completedOrders = orders.filter((o) => o.status === 'completed');
   const pendingOrders = orders.filter((o) => o.status === 'pending' || o.status === 'processing');
-  const totalSalesCount = completedOrders.length + 94; // realistic metric
-  const estimatedProfit = merchantBalanceUSD * 0.48; // realistic profit margin
+  const totalSalesCount = completedOrders.length;
 
   const handleOpenCodeBank = (prod: Product) => {
-    setSelectedProductForCodes(prod);
-    setSelectedPkgId(prod.packages[0]?.id || '');
-    setNewCodesText('');
+    void prod;
+    showToast('مخزون الأكواد غير موصول بخدمة خادم آمنة. لا تدخل أكوادًا هنا؛ لم يُفتح بنك الأكواد.');
   };
 
   const handleSaveCodes = (e: React.FormEvent) => {
@@ -74,6 +71,9 @@ export const MerchantDashboardScreen: React.FC = () => {
 
   return (
     <div className="space-y-6 pb-12">
+      <div role="status" className="rounded-xl border border-amber-500/40 bg-amber-950/30 px-4 py-3 text-xs leading-relaxed text-amber-200">
+        وضع الإدارة غير مكتمل: تغييرات المنتجات والمخزون والموظفين لا تُحفظ في قاعدة البيانات. لا ترفع أكوادًا سرية من المتصفح.
+      </div>
       
       {/* Top Header matching Screen 10 in mockup */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -106,9 +106,7 @@ export const MerchantDashboardScreen: React.FC = () => {
         </div>
       </div>
 
-      {/* 4 Stats Cards (Exact stats from Screen 10 in mockup):
-          الرصيد المتاح: $2,500 | المبيعات: 124 | الأرباح: $1,200 | الطلبات: 98
-      */}
+      {/* لا تعرض هذه الواجهة أرصدة أو أرباحًا تقديرية غير موصولة بمحاسبة خادمية. */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="p-4 rounded-2xl bg-[#0f1523] border border-cyan-500/20 space-y-1">
           <div className="flex items-center justify-between text-xs text-slate-400">
@@ -116,9 +114,9 @@ export const MerchantDashboardScreen: React.FC = () => {
             <DollarSign className="w-4 h-4 text-cyan-400" />
           </div>
           <div className="text-xl sm:text-2xl font-black font-mono text-white">
-            {formatPrice(merchantBalanceUSD)}
+            غير متاح
           </div>
-          <span className="text-[10px] text-emerald-400 block">+14% نمو هذا الأسبوع</span>
+          <span className="text-[10px] text-slate-400 block">المحفظة غير موصولة بالخادم</span>
         </div>
 
         <div className="p-4 rounded-2xl bg-[#0f1523] border border-cyan-500/20 space-y-1">
@@ -129,7 +127,7 @@ export const MerchantDashboardScreen: React.FC = () => {
           <div className="text-xl sm:text-2xl font-black font-mono text-emerald-400">
             {totalSalesCount} عملية
           </div>
-          <span className="text-[10px] text-slate-400 block">شحن فوري مباشر</span>
+          <span className="text-[10px] text-slate-400 block">من سجل الطلبات المحمّل</span>
         </div>
 
         <div className="p-4 rounded-2xl bg-[#0f1523] border border-cyan-500/20 space-y-1">
@@ -138,9 +136,9 @@ export const MerchantDashboardScreen: React.FC = () => {
             <BarChart3 className="w-4 h-4 text-amber-400" />
           </div>
           <div className="text-xl sm:text-2xl font-black font-mono text-amber-400">
-            {formatPrice(estimatedProfit)}
+            غير متاح
           </div>
-          <span className="text-[10px] text-amber-400/80 block">هامش ربح ممتاز</span>
+          <span className="text-[10px] text-amber-400/80 block">لا يوجد نظام محاسبة موصول</span>
         </div>
 
         <div className="p-4 rounded-2xl bg-[#0f1523] border border-cyan-500/20 space-y-1">
@@ -149,7 +147,7 @@ export const MerchantDashboardScreen: React.FC = () => {
             <ShoppingBag className="w-4 h-4 text-indigo-400" />
           </div>
           <div className="text-xl sm:text-2xl font-black font-mono text-indigo-400">
-            {orders.length + 90}
+            {orders.length}
           </div>
           <span className="text-[10px] text-cyan-400 block font-semibold">
             {pendingOrders.length} طلبات قيد التجهيز
@@ -206,11 +204,6 @@ export const MerchantDashboardScreen: React.FC = () => {
 
           <div className="grid grid-cols-1 gap-4">
             {products.map((prod) => {
-              const totalStockCodes = prod.packages.reduce(
-                (acc, p) => acc + (p.availableCodes ? p.availableCodes.length : 0),
-                0
-              );
-
               return (
                 <div
                   key={prod.id}
@@ -235,7 +228,7 @@ export const MerchantDashboardScreen: React.FC = () => {
                         <p className="text-xs text-slate-400 mt-0.5">
                           {prod.deliveryType === 'direct_id_recharge'
                             ? 'شحن مباشر بمعرف اللاعب (Player ID)'
-                            : `كود تفعيل فوري (${totalStockCodes} كود متاح بالمخزن)`}
+                            : 'كود تفعيل رقمي — المخزون الخادمي غير مهيأ'}
                         </p>
                       </div>
                     </div>
@@ -289,11 +282,6 @@ export const MerchantDashboardScreen: React.FC = () => {
                           <span className="text-xs font-mono font-extrabold text-cyan-400 block mt-1">
                             {formatPrice(pkg.priceUSD)}
                           </span>
-                          {pkg.availableCodes && (
-                            <span className="text-[10px] text-slate-500 font-mono block mt-0.5">
-                              {pkg.availableCodes.length} كود بالمخزن
-                            </span>
-                          )}
                         </div>
                       ))}
                     </div>

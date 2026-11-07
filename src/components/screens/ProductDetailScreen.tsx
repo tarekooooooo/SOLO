@@ -28,9 +28,8 @@ export const ProductDetailScreen: React.FC = () => {
     selectedProductId, 
     setActiveScreen, 
     formatPrice, 
-    createOrder, 
     customerBalanceUSD, 
-    showToast 
+    showToast
   } = useStore();
 
   const product: Product = products.find((p: Product) => p.id === selectedProductId) || products[0];
@@ -38,76 +37,24 @@ export const ProductDetailScreen: React.FC = () => {
   const [selectedPackage, setSelectedPackage] = useState<ProductPackage>(
     product.packages[2] || product.packages[0]
   );
-  const [playerId, setPlayerId] = useState('519284710');
-  const [playerName, setPlayerName] = useState('Sniper_KSA');
+  const [playerId, setPlayerId] = useState('');
+  const [playerName, setPlayerName] = useState('');
   const [isVerifyingId, setIsVerifyingId] = useState(false);
-  const [idVerified, setIdVerified] = useState(true);
+  const [idVerified, setIdVerified] = useState(false);
 
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('wallet');
-  const [paymentReference, setPaymentReference] = useState('');
-
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('libyana');
   const isDirectRecharge = product.deliveryType === 'direct_id_recharge';
   const isManualPayment = ['libyana', 'almadar', 'bank_transfer', 'payoneer'].includes(paymentMethod);
 
   const handleVerifyPlayerId = () => {
     if (!playerId) return;
-    setIsVerifyingId(true);
-    setTimeout(() => {
-      setIsVerifyingId(false);
-      setIdVerified(true);
-      setPlayerName('Sniper_KSA');
-      showToast(`تم التحقق من الحساب بنجاح: Sniper_KSA (سيرفر الشرق الأوسط)`);
-    }, 800);
+    setIsVerifyingId(false);
+    setIdVerified(false);
+    showToast('التحقق المباشر من معرف اللاعب غير مربوط بمزوّد اللعبة؛ لم يتم تأكيد الحساب.');
   };
 
   const handleBuyNow = () => {
-    if (isDirectRecharge && (!playerId || !idVerified)) {
-      showToast('يرجى إدخال والتحقق من معرف اللاعب (Player ID) أولاً!');
-      return;
-    }
-
-    const cost = selectedPackage.priceUSD;
-
-    if (paymentMethod === 'wallet' && customerBalanceUSD < cost) {
-      showToast('رصيدك في المحفظة غير كافٍ. يمكنك استخدام الدفع اليدوي أو شحن المحفظة.');
-      return;
-    }
-
-    if (isManualPayment && !paymentReference.trim()) {
-      showToast('يرجى إدخال رقم الحوالة أو كود الكرت لتأكيد الدفع اليدوي');
-      return;
-    }
-
-    const paymentMethodLabels: Record<PaymentMethod, string> = {
-      wallet: 'المحفظة الإلكترونية',
-      atlos_crypto: 'بوابة ATLOS المشفرة (USDT)',
-      libyana: 'ليبيانا (دفع يدوي)',
-      almadar: 'المدار الجديد (دفع يدوي)',
-      bank_transfer: 'تحويل مصرفي (دفع يدوي)',
-      payoneer: 'Payoneer (دفع يدوي)',
-    };
-
-    createOrder({
-      customerId: 'usr-tarek',
-      customerName: 'طارق الأحمد',
-      customerPhone: '+966551234567',
-      customerEmail: 'tarekai042@gmail.com',
-      productId: product.id,
-      productName: product.titleAr,
-      packageId: selectedPackage.id,
-      packageName: selectedPackage.name,
-      platform: product.platform,
-      priceUSD: selectedPackage.priceUSD,
-      deliveryType: product.deliveryType,
-      targetPlayerId: isDirectRecharge ? playerId : undefined,
-      targetPlayerName: isDirectRecharge ? playerName : undefined,
-      isGift: false,
-      paymentMethod: paymentMethodLabels[paymentMethod] || paymentMethod,
-      paymentReference: paymentReference.trim() || undefined,
-    });
-
-    // Navigate to admin fulfillment or home
-    setActiveScreen('admin');
+    showToast('الشراء متوقف مؤقتًا. لا تحول أموالًا ولا تدخل بيانات دفع؛ لم يكتمل ربط المخزون والتسليم بعد.');
   };
 
   const handleSendAsGift = () => {
@@ -131,6 +78,10 @@ export const ProductDetailScreen: React.FC = () => {
 
       {/* Main Product Card */}
       <div className="rounded-3xl bg-[#0f1523] border border-cyan-500/20 overflow-hidden shadow-2xl">
+
+        <div role="status" className="mx-4 mt-4 rounded-xl border border-amber-500/40 bg-amber-950/30 px-3 py-2 text-xs leading-relaxed text-amber-200">
+          المتجر في وضع المعاينة. الشراء متوقف حاليًا لعدم اكتمال مخزون الأكواد والتسليم الآمن؛ لا تحوّل أموالًا ولا تدخل رقم حوالة.
+        </div>
         
         {/* Product Media Header */}
         <div className="relative h-60 sm:h-72 bg-slate-950 overflow-hidden">
@@ -218,11 +169,6 @@ export const ProductDetailScreen: React.FC = () => {
                       <span className="text-xs font-bold text-white block mb-1">
                         {pkg.name}
                       </span>
-                      {pkg.availableCodes && (
-                        <span className="text-[10px] font-mono text-cyan-400 block">
-                          {pkg.availableCodes.length} كود متوفر
-                        </span>
-                      )}
                     </div>
 
                     <div className="pt-2 mt-2 border-t border-slate-800 flex items-center justify-between">
@@ -303,8 +249,8 @@ export const ProductDetailScreen: React.FC = () => {
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
               <button
                 type="button"
-                onClick={() => setPaymentMethod('wallet')}
-                className={`p-2.5 rounded-xl border text-right transition-all ${
+                disabled
+                className={`p-2.5 rounded-xl border text-right opacity-50 cursor-not-allowed ${
                   paymentMethod === 'wallet'
                     ? 'border-cyan-400 bg-cyan-500/10 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.2)]'
                     : 'border-slate-800 bg-slate-800/60 text-slate-300 hover:border-slate-700'
@@ -312,15 +258,15 @@ export const ProductDetailScreen: React.FC = () => {
               >
                 <div className="flex items-center justify-between mb-0.5">
                   <Wallet className="w-3.5 h-3.5 text-cyan-400" />
-                  <span className="text-[9px] text-emerald-400">فوري</span>
+                  <span className="text-[9px] text-slate-400">غير مفعلة</span>
                 </div>
                 <div className="font-bold">المحفظة الإلكترونية</div>
               </button>
 
               <button
                 type="button"
-                onClick={() => setPaymentMethod('atlos_crypto')}
-                className={`p-2.5 rounded-xl border text-right transition-all ${
+                disabled
+                className={`p-2.5 rounded-xl border text-right opacity-50 cursor-not-allowed ${
                   paymentMethod === 'atlos_crypto'
                     ? 'border-cyan-400 bg-cyan-500/10 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.2)]'
                     : 'border-slate-800 bg-slate-800/60 text-slate-300 hover:border-slate-700'
@@ -328,7 +274,7 @@ export const ProductDetailScreen: React.FC = () => {
               >
                 <div className="flex items-center justify-between mb-0.5">
                   <Coins className="w-3.5 h-3.5 text-amber-400" />
-                  <span className="text-[9px] text-amber-400">USDT</span>
+                  <span className="text-[9px] text-slate-400">قريبًا</span>
                 </div>
                 <div className="font-bold">بوابة ATLOS المشفرة</div>
               </button>
@@ -403,22 +349,15 @@ export const ProductDetailScreen: React.FC = () => {
               <div className="p-3 rounded-xl bg-amber-950/20 border border-amber-500/30 space-y-2 text-xs">
                 <div className="flex items-start gap-1.5 text-amber-300 text-[11px]">
                   <AlertCircle className="w-4 h-4 shrink-0 text-amber-400 mt-0.5" />
-                  <span>الطلب سيوضع في حالة <strong>(بانتظار مراجعة الإدارة)</strong> ولن يتم تسليم الكود أو الشحن حتى تدقيق الحوالة.</span>
+                  <span>وسائل الدفع اليدوي معروضة للتجهيز فقط؛ لا تستخدمها الآن لأن إنشاء الطلب وتسليم المنتج غير مفعّلين.</span>
                 </div>
-                <input
-                  type="text"
-                  value={paymentReference}
-                  onChange={(e) => setPaymentReference(e.target.value)}
-                  placeholder="أدخل كود الكرت أو رقم الحوالة / إشعار التحويل *"
-                  className="w-full px-3 py-2 bg-slate-950 border border-amber-500/40 rounded-lg text-amber-200 text-xs font-mono focus:outline-none focus:border-cyan-400"
-                />
               </div>
             )}
 
             {paymentMethod === 'atlos_crypto' && (
               <div className="p-2.5 rounded-xl bg-cyan-950/30 border border-cyan-500/30 text-[11px] text-cyan-300 flex items-center gap-2">
                 <Coins className="w-4 h-4 text-cyan-400 shrink-0" />
-                <span>الدفع المشفر عبر ATLOS: يتم التحقق خادمياً من توقيع HMAC ومطابقة مبلغ الطلب.</span>
+                <span>ATLOS غير مفعّلة؛ لا يتم قبول أو تأكيد أي دفعة مشفرة حاليًا.</span>
               </div>
             )}
           </div>
@@ -445,10 +384,11 @@ export const ProductDetailScreen: React.FC = () => {
               <button
                 type="button"
                 onClick={handleBuyNow}
-                className="flex-1 sm:flex-none px-7 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white text-xs sm:text-sm font-bold shadow-lg shadow-cyan-600/30 flex items-center justify-center gap-2 transition-all hover:scale-105"
+                disabled
+                className="flex-1 sm:flex-none px-7 py-3 rounded-xl bg-slate-700 text-slate-300 text-xs sm:text-sm font-bold flex items-center justify-center gap-2 opacity-60 cursor-not-allowed"
               >
                 <Zap className="w-4 h-4" />
-                <span>شراء الآن</span>
+                <span>الشراء غير متاح مؤقتًا</span>
               </button>
             </div>
           </div>
