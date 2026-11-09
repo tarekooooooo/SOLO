@@ -3,7 +3,7 @@
 //
 // Security & Business Rules:
 // 1. Authenticates admin identity strictly via Supabase JWT.
-// 2. Enforces public.is_admin() server-side permission checks.
+// 2. Calls a database RPC that enforces private.is_admin() server-side.
 // 3. Atomically invokes review_manual_payment RPC in database (FOR UPDATE lock).
 // 4. Logs every administrative decision in admin_audit_logs with admin ID, timestamp, and notes.
 // 5. Prevents double approval or modifying completed orders.

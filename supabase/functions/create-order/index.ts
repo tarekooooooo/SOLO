@@ -77,13 +77,26 @@ Deno.serve(async (req: Request) => {
     }
 
     const manualMethods = ['libyana', 'almadar', 'bank_transfer', 'payoneer'];
-    if (!manualMethods.includes(paymentMethod)) {
+    const supportedMethods = [...manualMethods, 'atlos_crypto'];
+    if (!supportedMethods.includes(paymentMethod)) {
       return new Response(
-        JSON.stringify({ error: 'وسيلة الدفع غير متاحة حاليًا؛ استخدم إحدى وسائل الدفع اليدوي المعتمدة.' }),
+        JSON.stringify({ error: 'وسيلة الدفع غير متاحة حاليًا.' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-    if (typeof paymentReference !== 'string' || paymentReference.trim().length < 3 || paymentReference.trim().length > 200) {
+    if (paymentMethod === 'atlos_crypto' && (!Deno.env.get('ATLOS_MERCHANT_ID') || !Deno.env.get('ATLOS_API_SECRET'))) {
+      return new Response(
+        JSON.stringify({ error: 'بوابة ATLOS غير جاهزة على الخادم؛ لم يتم إنشاء طلب.' }),
+        { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    if (paymentMethod === 'atlos_crypto' && paymentReference != null) {
+      return new Response(
+        JSON.stringify({ error: 'لا تقبل مرجع دفع من المتصفح لوسيلة ATLOS.' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    if (manualMethods.includes(paymentMethod) && (typeof paymentReference !== 'string' || paymentReference.trim().length < 3 || paymentReference.trim().length > 200)) {
       return new Response(
         JSON.stringify({ error: 'مرجع التحويل مطلوب ويجب ألا يتجاوز 200 محرف.' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -156,7 +169,7 @@ Deno.serve(async (req: Request) => {
       p_customer_phone: safeCustomerPhone,
       p_delivery_type: deliveryType,
       p_payment_method: paymentMethod,
-      p_payment_reference: paymentReference.trim(),
+      p_payment_reference: manualMethods.includes(paymentMethod) ? paymentReference.trim() : null,
       p_payment_receipt_url: null,
       p_target_player_id: targetPlayerId || null,
       p_target_player_name: targetPlayerName || null,

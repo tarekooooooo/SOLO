@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { 
   ArrowRight, 
   ShieldCheck, 
@@ -19,7 +19,33 @@ import {
   Wallet
 } from 'lucide-react';
 import { useStore } from '../../context/StoreContext';
-import { Product, ProductPackage, PaymentMethod } from '../../types';
+import { Order, Product, ProductPackage, PaymentMethod } from '../../types';
+import { SUPABASE_URL } from '../../config/api';
+import { loadAtlosWidget } from '../../lib/atlosWidget';
+
+function getAtlosIdempotencyKey(userId: string, scope: string): string {
+  const storageKey = `solo_atlos_idempotency:${encodeURIComponent(userId)}:${encodeURIComponent(scope)}`;
+  const maxAgeMs = 23 * 60 * 60 * 1000;
+  try {
+    const stored = JSON.parse(localStorage.getItem(storageKey) || 'null') as { key?: unknown; createdAt?: unknown } | null;
+    if (
+      typeof stored?.key === 'string'
+      && typeof stored.createdAt === 'number'
+      && Date.now() - stored.createdAt >= 0
+      && Date.now() - stored.createdAt < maxAgeMs
+    ) return stored.key;
+  } catch {
+    // Ignore malformed or unavailable browser storage and create a fresh key.
+  }
+
+  const key = crypto.randomUUID();
+  try {
+    localStorage.setItem(storageKey, JSON.stringify({ key, createdAt: Date.now() }));
+  } catch {
+    // The in-memory reference still prevents duplicate clicks in this page.
+  }
+  return key;
+}
 
 export const ProductDetailScreen: React.FC = () => {
   const { 
@@ -28,7 +54,12 @@ export const ProductDetailScreen: React.FC = () => {
     setActiveScreen, 
     formatPrice, 
     customerBalanceUSD, 
-    showToast
+    showToast,
+    checkoutEnabled,
+    atlosEnabled,
+    atlosMerchantId,
+    currentUser,
+    createOrder,
   } = useStore();
 
   const product: Product | undefined = products.find((p: Product) => p.id === selectedProductId) || products[0];
@@ -38,6 +69,10 @@ export const ProductDetailScreen: React.FC = () => {
   const [playerName, setPlayerName] = useState('');
   const [isVerifyingId, setIsVerifyingId] = useState(false);
   const [idVerified, setIdVerified] = useState(false);
+  const [isStartingAtlos, setIsStartingAtlos] = useState(false);
+  const [atlosOrder, setAtlosOrder] = useState<Order | null>(null);
+  const [atlosPaymentSubmitted, setAtlosPaymentSubmitted] = useState(false);
+  const atlosIdempotencyRef = useRef<{ scope: string; key: string } | null>(null);
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('libyana');
   const isDirectRecharge = product?.deliveryType === 'direct_id_recharge';
@@ -50,8 +85,93 @@ export const ProductDetailScreen: React.FC = () => {
     showToast('التحقق المباشر من معرف اللاعب غير مربوط بمزوّد اللعبة؛ لم يتم تأكيد الحساب.');
   };
 
-  const handleBuyNow = () => {
-    showToast('الشراء متوقف مؤقتًا. لا تحول أموالًا ولا تدخل بيانات دفع؛ لم يكتمل ربط المخزون والتسليم بعد.');
+  const handleBuyNow = async () => {
+    if (!checkoutEnabled) {
+      showToast('الشراء متوقف حاليًا. لن يتم إنشاء طلب أو فتح بوابة الدفع.');
+      return;
+    }
+    if (paymentMethod !== 'atlos_crypto') {
+      showToast('طريقة الدفع المحددة غير مهيأة للدفع الآلي بعد.');
+      return;
+    }
+    if (!currentUser) {
+      showToast('سجّل الدخول أولًا قبل بدء الدفع.');
+      setActiveScreen('auth');
+      return;
+    }
+    if (!atlosEnabled || !atlosMerchantId) {
+      showToast('بوابة ATLOS غير جاهزة؛ لم يتم إنشاء طلب أو فتح الدفع.');
+      return;
+    }
+    const merchantId = atlosMerchantId;
+    if (isDirectRecharge) {
+      showToast('الشحن المباشر غير متاح حتى يكتمل التحقق من اللاعب والتسليم الآمن.');
+      return;
+    }
+    if (atlosPaymentSubmitted || isStartingAtlos) return;
+
+    const scope = `${currentUser.id}:${product.id}:${selectedPackage.id}`;
+    const idempotencyKey = getAtlosIdempotencyKey(currentUser.id, `${product.id}:${selectedPackage.id}`);
+    if (atlosIdempotencyRef.current?.scope !== scope || atlosIdempotencyRef.current.key !== idempotencyKey) {
+      atlosIdempotencyRef.current = { scope, key: idempotencyKey };
+      setAtlosOrder(null);
+      setAtlosPaymentSubmitted(false);
+    }
+
+    setIsStartingAtlos(true);
+    try {
+      const widget = await loadAtlosWidget();
+      let order = atlosOrder?.productId === product.id && atlosOrder.packageId === selectedPackage.id
+        ? atlosOrder
+        : null;
+
+      if (!order) {
+        order = await createOrder({
+          customerId: currentUser.id,
+          customerName: currentUser.name,
+          customerEmail: currentUser.email,
+          customerPhone: currentUser.phone,
+          productId: product.id,
+          productName: product.titleAr,
+          packageId: selectedPackage.id,
+          packageName: selectedPackage.name,
+          platform: product.platform,
+          priceUSD: selectedPackage.priceUSD,
+          deliveryType: product.deliveryType,
+          targetPlayerId: playerId.trim() || undefined,
+          targetPlayerName: playerName.trim() || undefined,
+          isGift: false,
+          paymentMethod: 'atlos_crypto',
+          idempotencyKey,
+        });
+        if (!order) return;
+        setAtlosOrder(order);
+      }
+
+      widget.Pay({
+        merchantId,
+        orderId: order.id,
+        orderAmount: order.priceUSD,
+        orderCurrency: 'USD',
+        postbackUrl: SUPABASE_URL ? `${SUPABASE_URL}/functions/v1/atlos-webhook` : undefined,
+        userName: currentUser.name,
+        userEmail: currentUser.email,
+        theme: 'dark',
+        onSuccess: () => {
+          setAtlosPaymentSubmitted(true);
+          showToast('استلمت الواجهة إشارة نجاح فقط؛ يبقى الطلب معلقًا حتى يؤكد خادمنا Postback الموقّع من ATLOS.');
+        },
+        onCanceled: () => showToast('أُغلقت نافذة الدفع. بقي الطلب معلقًا ويمكن إعادة المحاولة دون إنشاء طلب مكرر.'),
+        onCompleted: () => {
+          setAtlosPaymentSubmitted(true);
+          showToast('تم إنهاء خطوة الدفع. لا يُعد الطلب مدفوعًا حتى يصل تأكيد ATLOS الموثّق إلى الخادم.');
+        },
+      });
+    } catch (error) {
+      showToast(error instanceof Error ? `تعذر بدء الدفع: ${error.message}` : 'تعذر بدء الدفع عبر ATLOS.');
+    } finally {
+      setIsStartingAtlos(false);
+    }
   };
 
   const handleSendAsGift = () => {
@@ -86,9 +206,11 @@ export const ProductDetailScreen: React.FC = () => {
       {/* Main Product Card */}
       <div className="rounded-3xl bg-[#0f1523] border border-cyan-500/20 overflow-hidden shadow-2xl">
 
-        <div role="status" className="mx-4 mt-4 rounded-xl border border-amber-500/40 bg-amber-950/30 px-3 py-2 text-xs leading-relaxed text-amber-200">
-          المتجر في وضع المعاينة. الشراء متوقف حاليًا لعدم اكتمال مخزون الأكواد والتسليم الآمن؛ لا تحوّل أموالًا ولا تدخل رقم حوالة.
-        </div>
+          {!atlosEnabled && (
+            <div role="status" className="mx-4 mt-4 rounded-xl border border-amber-500/40 bg-amber-950/30 px-3 py-2 text-xs leading-relaxed text-amber-200">
+              {checkoutEnabled ? 'بوابة الدفع غير جاهزة بعد؛ لا تدخل بيانات دفع.' : 'المتجر في وضع المعاينة. الشراء متوقف حاليًا لعدم اكتمال مخزون الأكواد والتسليم الآمن؛ لا تحوّل أموالًا ولا تدخل بيانات دفع.'}
+            </div>
+          )}
         
         {/* Product Media Header */}
         <div className="relative h-60 sm:h-72 bg-slate-950 overflow-hidden">
@@ -258,8 +380,9 @@ export const ProductDetailScreen: React.FC = () => {
 
               <button
                 type="button"
-                disabled
-                className={`p-2.5 rounded-xl border text-right opacity-50 cursor-not-allowed ${
+                onClick={() => setPaymentMethod('atlos_crypto')}
+                disabled={!atlosEnabled}
+                className={`p-2.5 rounded-xl border text-right transition-all ${!atlosEnabled ? 'opacity-50 cursor-not-allowed' : 'hover:border-cyan-600'} ${
                   paymentMethod === 'atlos_crypto'
                     ? 'border-cyan-400 bg-cyan-500/10 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.2)]'
                     : 'border-slate-800 bg-slate-800/60 text-slate-300 hover:border-slate-700'
@@ -267,7 +390,7 @@ export const ProductDetailScreen: React.FC = () => {
               >
                 <div className="flex items-center justify-between mb-0.5">
                   <Coins className="w-3.5 h-3.5 text-amber-400" />
-                  <span className="text-[9px] text-slate-400">قريبًا</span>
+                  <span className="text-[9px] text-slate-400">{atlosEnabled ? 'متاحة' : 'غير مفعلة'}</span>
                 </div>
                 <div className="font-bold">بوابة ATLOS المشفرة</div>
               </button>
@@ -347,10 +470,10 @@ export const ProductDetailScreen: React.FC = () => {
               </div>
             )}
 
-            {paymentMethod === 'atlos_crypto' && (
+            {paymentMethod === 'atlos_crypto' && !atlosEnabled && (
               <div className="p-2.5 rounded-xl bg-cyan-950/30 border border-cyan-500/30 text-[11px] text-cyan-300 flex items-center gap-2">
                 <Coins className="w-4 h-4 text-cyan-400 shrink-0" />
-                <span>ATLOS غير مفعّلة؛ لا يتم قبول أو تأكيد أي دفعة مشفرة حاليًا.</span>
+                <span>ATLOS غير مفعّلة؛ لا يتم إنشاء طلب أو قبول أو تأكيد أي دفعة حاليًا.</span>
               </div>
             )}
           </div>
@@ -377,11 +500,11 @@ export const ProductDetailScreen: React.FC = () => {
               <button
                 type="button"
                 onClick={handleBuyNow}
-                disabled
-                className="flex-1 sm:flex-none px-7 py-3 rounded-xl bg-slate-700 text-slate-300 text-xs sm:text-sm font-bold flex items-center justify-center gap-2 opacity-60 cursor-not-allowed"
+                disabled={!atlosEnabled || paymentMethod !== 'atlos_crypto' || isStartingAtlos || atlosPaymentSubmitted}
+                className={`flex-1 sm:flex-none px-7 py-3 rounded-xl bg-slate-700 text-slate-300 text-xs sm:text-sm font-bold flex items-center justify-center gap-2 ${!atlosEnabled || paymentMethod !== 'atlos_crypto' || isStartingAtlos || atlosPaymentSubmitted ? 'opacity-60 cursor-not-allowed' : 'hover:bg-cyan-800'}`}
               >
                 <Zap className="w-4 h-4" />
-                <span>الشراء غير متاح مؤقتًا</span>
+                <span>{isStartingAtlos ? 'جارٍ فتح ATLOS...' : atlosPaymentSubmitted ? 'بانتظار تأكيد الخادم' : atlosEnabled && paymentMethod === 'atlos_crypto' ? 'الدفع عبر ATLOS' : 'الشراء غير متاح مؤقتًا'}</span>
               </button>
             </div>
           </div>
