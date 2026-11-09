@@ -10,15 +10,11 @@ import {
   Plus, 
   Search, 
   ChevronRight, 
-  ShieldCheck,
   ShoppingBag,
-  Sparkles,
-  Mail,
-  CheckCircle2
+  Sparkles
 } from 'lucide-react';
 import { useStore } from '../../context/StoreContext';
 import { SupportTicket } from '../../types';
-import { sendGmailMessage } from '../../services/gmail';
 
 export const CustomerSupportScreen: React.FC = () => {
   const { 
@@ -30,18 +26,12 @@ export const CustomerSupportScreen: React.FC = () => {
     userRole,
     assistants,
     assignTicket,
-    showToast,
-    isGmailConnected,
-    loginWithGoogle
+    showToast
   } = useStore();
 
   const [selectedTicketId, setSelectedTicketId] = useState<string>(supportTickets[0]?.id || '');
   const [replyText, setReplyText] = useState('');
   const [showNewTicketForm, setShowNewTicketForm] = useState(false);
-  const [isGmailModalOpen, setIsGmailModalOpen] = useState(false);
-  const [gmailBody, setGmailBody] = useState('');
-  const [isSendingGmail, setIsSendingGmail] = useState(false);
-  const [showConfirmSendGmail, setShowConfirmSendGmail] = useState(false);
 
   // New ticket state
   const [newSubject, setNewSubject] = useState('');
@@ -353,28 +343,8 @@ export const CustomerSupportScreen: React.FC = () => {
               </div>
             </div>
 
-            {/* Gmail Reply Option */}
-            <div className="flex items-center justify-between pt-2 border-t border-slate-800">
-              <span className="text-[11px] text-slate-400">إرسال رد رسمي للعميل مباشرة:</span>
-              <button
-                type="button"
-                onClick={() => {
-                  if (!isGmailConnected) {
-                    loginWithGoogle();
-                    return;
-                  }
-                  setGmailBody(replyText || `عزيزي ${currentTicket.customerName}،\n\nبخصوص تذكرتك رقم #${currentTicket.ticketNumber} (${currentTicket.subject})، يسرنا إعلامك بأنه تم حل المشكلة بنجاح.\n\nمع تحيات فريق خدمة العملاء - متجر TAREK STOR`);
-                  setIsGmailModalOpen(true);
-                }}
-                className="px-3 py-1.5 rounded-lg bg-red-950/60 hover:bg-red-900/60 text-red-300 border border-red-800/80 text-xs font-semibold flex items-center gap-1.5 transition-all"
-              >
-                <Mail className="w-3.5 h-3.5 text-red-400" />
-                <span>{isGmailConnected ? 'إرسال بريد رسمي عبر Gmail ✉️' : 'ربط Gmail والرد بالبريد'}</span>
-              </button>
-            </div>
-
             {/* Reply Input Box */}
-            <form onSubmit={handleSendReply} className="flex gap-2 pt-1">
+            <form onSubmit={handleSendReply} className="flex gap-2 pt-2 border-t border-slate-800">
               <input
                 type="text"
                 value={replyText}
@@ -390,132 +360,6 @@ export const CustomerSupportScreen: React.FC = () => {
                 <span>إرسال الرد المباشر</span>
               </button>
             </form>
-
-            {/* Modal for Gmail Direct Reply */}
-            {isGmailModalOpen && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
-                <div className="w-full max-w-lg rounded-2xl bg-[#0f172a] border border-red-500/30 p-6 space-y-4 shadow-2xl text-right">
-                  <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                      <Mail className="w-4 h-4 text-red-400" />
-                      <span>إرسال رد رسمي للعميل عبر Gmail</span>
-                    </h3>
-                    <button
-                      type="button"
-                      onClick={() => setIsGmailModalOpen(false)}
-                      className="text-slate-400 hover:text-white text-xs"
-                    >
-                      إغلاق
-                    </button>
-                  </div>
-
-                  <div className="space-y-2 text-xs">
-                    <div>
-                      <span className="text-slate-400 block mb-1">المرسل إليه (بريد العميل):</span>
-                      <input
-                        type="text"
-                        disabled
-                        value={currentTicket.customerEmail}
-                        className="w-full px-3 py-2 bg-slate-950/60 border border-slate-800 rounded-lg text-slate-300 font-mono"
-                      />
-                    </div>
-
-                    <div>
-                      <span className="text-slate-400 block mb-1">عنوان الرسالة:</span>
-                      <input
-                        type="text"
-                        disabled
-                        value={`رد على تذكرة الدعم #${currentTicket.ticketNumber}: ${currentTicket.subject}`}
-                        className="w-full px-3 py-2 bg-slate-950/60 border border-slate-800 rounded-lg text-slate-300"
-                      />
-                    </div>
-
-                    <div>
-                      <span className="text-slate-300 block mb-1 font-semibold">نص الرسالة:</span>
-                      <textarea
-                        rows={5}
-                        value={gmailBody}
-                        onChange={(e) => setGmailBody(e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white leading-relaxed focus:border-red-500 focus:outline-none"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="pt-2 flex justify-end gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setIsGmailModalOpen(false)}
-                      className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl text-xs"
-                    >
-                      إلغاء
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setShowConfirmSendGmail(true)}
-                      className="px-5 py-2 bg-gradient-to-r from-red-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-1.5"
-                    >
-                      <Send className="w-3.5 h-3.5" />
-                      <span>متابعة وتأكيد الإرسال</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Explicit Confirmation Dialog before sending via Gmail API */}
-            {showConfirmSendGmail && (
-              <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
-                <div className="w-full max-w-md rounded-2xl bg-[#0b1320] border border-cyan-500/50 p-6 space-y-4 shadow-2xl text-right">
-                  <div className="flex items-center gap-2 text-cyan-400 font-bold text-sm">
-                    <ShieldCheck className="w-5 h-5 text-cyan-400" />
-                    <span>تأكيد إرسال البريد عبر Gmail</span>
-                  </div>
-
-                  <p className="text-xs text-slate-300 leading-relaxed">
-                    هل تؤكد رغبتك في إرسال هذا البريد الرسمي إلى <strong>{currentTicket.customerEmail}</strong> عبر حسابك في Gmail؟
-                  </p>
-
-                  <div className="pt-2 flex justify-end gap-2">
-                    <button
-                      type="button"
-                      disabled={isSendingGmail}
-                      onClick={() => setShowConfirmSendGmail(false)}
-                      className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl text-xs"
-                    >
-                      إلغاء
-                    </button>
-                    <button
-                      type="button"
-                      disabled={isSendingGmail}
-                      onClick={async () => {
-                        setIsSendingGmail(true);
-                        try {
-                          await sendGmailMessage({
-                            to: currentTicket.customerEmail,
-                            subject: `رد على تذكرة الدعم #${currentTicket.ticketNumber}: ${currentTicket.subject}`,
-                            bodyText: gmailBody,
-                          });
-                          showToast(`✅ تم إرسال الرد بنجاح إلى ${currentTicket.customerEmail} عبر Gmail!`);
-                          // Also append to local chat
-                          sendTicketReply(currentTicket.id, gmailBody, 'فريق الدعم (عبر Gmail)', true);
-                          setShowConfirmSendGmail(false);
-                          setIsGmailModalOpen(false);
-                          setGmailBody('');
-                        } catch (err: unknown) {
-                          const msg = err instanceof Error ? err.message : 'فشل الإرسال';
-                          showToast(`⚠️ خطأ: ${msg}`);
-                        } finally {
-                          setIsSendingGmail(false);
-                        }
-                      }}
-                      className="px-5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-xl shadow-lg flex items-center gap-1.5"
-                    >
-                      {isSendingGmail ? 'جاري الإرسال...' : 'تأكيد الإرسال الآن'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
 
 
           </div>
