@@ -18,7 +18,7 @@ export const ProfileScreen: React.FC = () => {
   const { playerProfile, updatePlayerProfile, showToast, setActiveScreen } = useStore();
   const [isEditing, setIsEditing] = useState(false);
   const [username, setUsername] = useState(playerProfile.username);
-  const [pubgId, setPubgId] = useState(playerProfile.connectedPlatforms.pubgId || '519284710');
+  const [pubgId, setPubgId] = useState(playerProfile.connectedPlatforms.pubgId || '');
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,45 +62,29 @@ export const ProfileScreen: React.FC = () => {
 
           <div className="space-y-1.5 flex-1">
             <div className="flex items-center justify-center sm:justify-start gap-2">
-              <h3 className="text-xl font-black text-white">{playerProfile.username}</h3>
-              <span className="text-xs font-mono text-cyan-400 font-semibold">{playerProfile.tag}</span>
+              <h3 className="text-xl font-black text-white">{playerProfile.username || 'لم تُضف بيانات الملف بعد'}</h3>
+              {playerProfile.tag && <span className="text-xs font-mono text-cyan-400 font-semibold">{playerProfile.tag}</span>}
             </div>
 
             <p className="text-xs text-amber-400 font-semibold">
-              {playerProfile.rank} • نقطة {playerProfile.points} / 1500
+              {playerProfile.rank || 'لم يتم ربط إحصاءات ألعاب بهذا الحساب'}
             </p>
 
             {/* Level progress bar */}
-            <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden mt-2">
-              <div className="bg-gradient-to-r from-cyan-500 to-blue-500 h-full rounded-full w-[68%]" />
-            </div>
+            {playerProfile.level > 0 && <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden mt-2"><div className="bg-gradient-to-r from-cyan-500 to-blue-500 h-full rounded-full w-0" /></div>}
           </div>
 
           <button
-            onClick={() => setIsEditing(!isEditing)}
-            className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors"
-            title="تعديل الملف"
+            disabled
+            className="p-2.5 rounded-xl bg-slate-800 text-slate-500 opacity-60 cursor-not-allowed"
+            title="تعديل الملف غير متاح حتى ربطه بقاعدة البيانات"
           >
             <Edit3 className="w-4 h-4" />
           </button>
         </div>
 
-        {/* 3 Metrics: المتابعون | المشاركات | الإنجازات (Screen 9 in mockup) */}
-        <div className="grid grid-cols-3 gap-3 pt-4 border-t border-slate-800/80 text-center">
-          <div className="p-3 rounded-2xl bg-slate-950/60 border border-slate-800/80">
-            <span className="text-[10px] text-slate-400 block">المتابعون</span>
-            <span className="text-base font-black font-mono text-cyan-400">2.5k</span>
-          </div>
-
-          <div className="p-3 rounded-2xl bg-slate-950/60 border border-slate-800/80">
-            <span className="text-[10px] text-slate-400 block">المشاركات</span>
-            <span className="text-base font-black font-mono text-emerald-400">120</span>
-          </div>
-
-          <div className="p-3 rounded-2xl bg-slate-950/60 border border-slate-800/80">
-            <span className="text-[10px] text-slate-400 block">الإنجازات</span>
-            <span className="text-base font-black font-mono text-amber-400">8</span>
-          </div>
+        <div className="pt-4 border-t border-slate-800/80 text-center text-xs text-slate-400">
+          إحصاءات اللاعبين والإنجازات غير موصولة حاليًا، لذلك لا نعرض أرقامًا تجريبية.
         </div>
 
         {/* Edit profile drawer/form */}
@@ -152,33 +136,33 @@ export const ProfileScreen: React.FC = () => {
             <div className="p-3 rounded-2xl bg-slate-900/90 border border-slate-800 flex items-center justify-between">
               <div>
                 <span className="font-bold text-white block">Steam</span>
-                <span className="text-[10px] text-slate-400 font-mono">Tarek_Steam99</span>
+                <span className="text-[10px] text-slate-400 font-mono">{playerProfile.connectedPlatforms.steam || 'غير مرتبط'}</span>
               </div>
-              <Check className="w-4 h-4 text-emerald-400" />
+              {playerProfile.connectedPlatforms.steam && <Check className="w-4 h-4 text-emerald-400" />}
             </div>
 
             <div className="p-3 rounded-2xl bg-slate-900/90 border border-slate-800 flex items-center justify-between">
               <div>
                 <span className="font-bold text-white block">PlayStation</span>
-                <span className="text-[10px] text-slate-400 font-mono">Tarek_PSN</span>
+                <span className="text-[10px] text-slate-400 font-mono">{playerProfile.connectedPlatforms.playstation || 'غير مرتبط'}</span>
               </div>
-              <Check className="w-4 h-4 text-emerald-400" />
+              {playerProfile.connectedPlatforms.playstation && <Check className="w-4 h-4 text-emerald-400" />}
             </div>
 
             <div className="p-3 rounded-2xl bg-slate-900/90 border border-slate-800 flex items-center justify-between">
               <div>
                 <span className="font-bold text-white block">Xbox</span>
-                <span className="text-[10px] text-slate-400 font-mono">TarekLive</span>
+                <span className="text-[10px] text-slate-400 font-mono">{playerProfile.connectedPlatforms.xbox || 'غير مرتبط'}</span>
               </div>
-              <Check className="w-4 h-4 text-emerald-400" />
+              {playerProfile.connectedPlatforms.xbox && <Check className="w-4 h-4 text-emerald-400" />}
             </div>
 
             <div className="p-3 rounded-2xl bg-slate-900/90 border border-slate-800 flex items-center justify-between">
               <div>
                 <span className="font-bold text-white block">PUBG ID</span>
-                <span className="text-[10px] text-cyan-400 font-mono font-bold">{pubgId}</span>
+                <span className="text-[10px] text-cyan-400 font-mono font-bold">{pubgId || playerProfile.connectedPlatforms.pubgId || 'غير مرتبط'}</span>
               </div>
-              <Check className="w-4 h-4 text-emerald-400" />
+              {(pubgId || playerProfile.connectedPlatforms.pubgId) && <Check className="w-4 h-4 text-emerald-400" />}
             </div>
           </div>
         </div>
@@ -187,11 +171,11 @@ export const ProfileScreen: React.FC = () => {
         <div className="space-y-3">
           <h4 className="text-xs font-bold text-slate-200">الألعاب المفضلة:</h4>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs text-center">
-            {playerProfile.favoriteGames.map((game: string, i: number) => (
+            {playerProfile.favoriteGames.length ? playerProfile.favoriteGames.map((game: string, i: number) => (
               <div key={i} className="p-3 rounded-2xl bg-slate-900/80 border border-slate-800 font-semibold text-slate-300">
                 {game}
               </div>
-            ))}
+            )) : <p className="col-span-full text-slate-400">لم تُربط ألعاب مفضلة بهذا الحساب.</p>}
           </div>
         </div>
 

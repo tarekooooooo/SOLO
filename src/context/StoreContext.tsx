@@ -191,14 +191,27 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [currencyCode, setCurrencyCodeState] = useState<CurrencyCode>('SAR');
   const currency = CURRENCIES[currencyCode] || CURRENCIES.USD;
 
-  const [products, setProducts] = useState<Product[]>(INITIAL_PRODUCTS);
+  const [products, setProducts] = useState<Product[]>(() => import.meta.env.DEV ? INITIAL_PRODUCTS : []);
   const [orders, setOrders] = useState<Order[]>([]);
   const [selectedOrderForFulfillment, setSelectedOrderForFulfillment] = useState<Order | null>(null);
 
   const [customerBalanceUSD, setCustomerBalanceUSD] = useState<number>(0);
   const [merchantBalanceUSD, setMerchantBalanceUSD] = useState<number>(0);
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
-  const [playerProfile, setPlayerProfile] = useState<PlayerProfile>(CURRENT_PLAYER_PROFILE);
+  const [playerProfile, setPlayerProfile] = useState<PlayerProfile>(() => import.meta.env.DEV ? CURRENT_PLAYER_PROFILE : {
+    id: '',
+    username: '',
+    tag: '',
+    avatar: '',
+    level: 0,
+    points: 0,
+    rank: '',
+    followersCount: 0,
+    joinedTournaments: 0,
+    achievementsCount: 0,
+    connectedPlatforms: {},
+    favoriteGames: [],
+  });
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Staff Assistants State
@@ -212,26 +225,18 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [storefrontMode, setStorefrontMode] = useState<StorefrontMode>('digital');
 
   // Physical Products (CJ Dropshipping)
-  const [physicalProducts, setPhysicalProducts] = useState<PhysicalProduct[]>(INITIAL_PHYSICAL_PRODUCTS);
+  const [physicalProducts, setPhysicalProducts] = useState<PhysicalProduct[]>(() => import.meta.env.DEV ? INITIAL_PHYSICAL_PRODUCTS : []);
   const [selectedPhysicalProduct, setSelectedPhysicalProduct] = useState<PhysicalProduct | null>(null);
 
   // Orders are server-owned. Never hydrate customer/admin orders from localStorage.
   const [physicalOrders, setPhysicalOrders] = useState<PhysicalOrder[]>([]);
 
-  // API Config (CJ Dropshipping, Google, Telegram with localStorage persistence)
+  // Integration settings are session-only; remove any legacy browser-stored credentials.
   const [apiConfig, setApiConfigState] = useState<ApiIntegrationsConfig>(() => {
     try {
-      const storageKey = 'tarek_store_api_config';
-      const saved = localStorage.getItem(storageKey);
-      if (saved) {
-        const parsed = JSON.parse(saved) as Partial<ApiIntegrationsConfig> & { cjApiKey?: string };
-        if ('cjApiKey' in parsed) delete parsed.cjApiKey;
-        const sanitized = { ...DEFAULT_API_CONFIG, ...parsed, cjConnected: false, autoFulfillWithCJ: false };
-        localStorage.setItem(storageKey, JSON.stringify(sanitized));
-        return sanitized;
-      }
+      localStorage.removeItem('tarek_store_api_config');
     } catch {
-      // ignore
+      // Browser storage may be unavailable; the app still uses safe defaults.
     }
     return DEFAULT_API_CONFIG;
   });
@@ -535,27 +540,19 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   // Staff & Assistants Methods
   const addAssistant = (assistantData: Omit<StaffAssistant, 'id' | 'addedAt' | 'ordersHandled' | 'ticketsHandled'>) => {
-    const newAssistant: StaffAssistant = {
-      ...assistantData,
-      id: `ast-${Date.now()}`,
-      addedAt: new Date().toISOString().split('T')[0],
-      ordersHandled: 0,
-      ticketsHandled: 0,
-    };
-    setAssistants((prev) => [newAssistant, ...prev]);
-    showToast(`تم تعيين المساعد "${newAssistant.name}" بنجاح وإرسال بيانات الدخول.`);
+    void assistantData;
+    showToast('إدارة المساعدين غير موصولة بالخادم؛ لم يُنشأ حساب أو تُرسل بيانات دخول.');
   };
 
   const updateAssistant = (id: string, updates: Partial<StaffAssistant>) => {
-    setAssistants((prev) =>
-      prev.map((a) => (a.id === id ? { ...a, ...updates } : a))
-    );
-    showToast('تم تحديث بيانات وصلاحيات المساعد بنجاح.');
+    void id;
+    void updates;
+    showToast('تعديل المساعدين غير موصول بالخادم؛ لم تُحفظ أي تغييرات.');
   };
 
   const deleteAssistant = (id: string) => {
-    setAssistants((prev) => prev.filter((a) => a.id !== id));
-    showToast('تم حذف المساعد من فريق العمل.');
+    void id;
+    showToast('حذف المساعدين غير موصول بالخادم؛ لم يُحذف أي حساب.');
   };
 
   // Support Tickets Methods
@@ -618,44 +615,14 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const createCustomerTicket = (data: { customerName: string; customerEmail: string; subject: string; message: string; relatedOrderId?: string }) => {
-    const newTckNum = `#TCK-${Math.floor(100 + Math.random() * 900)}`;
-    const newTicket: SupportTicket = {
-      id: `tck-${Date.now()}`,
-      ticketNumber: newTckNum,
-      customerName: data.customerName,
-      customerEmail: data.customerEmail,
-      subject: data.subject,
-      relatedOrderId: data.relatedOrderId,
-      category: 'order_status',
-      priority: 'high',
-      status: 'open',
-      createdAt: 'الآن',
-      messages: [
-        {
-          id: `msg-${Date.now()}`,
-          sender: 'customer',
-          senderName: data.customerName,
-          text: data.message,
-          time: 'الآن',
-        },
-      ],
-    };
-    setSupportTickets((prev) => [newTicket, ...prev]);
-    showToast(`تم إرسال تذكرة الدعم ${newTckNum} بنجاح، جاري الرد من خدمة العملاء.`);
+    void data;
+    showToast('نظام تذاكر الدعم غير موصول بالخادم؛ لم تُرسل أو تُحفظ أي تذكرة.');
   };
 
   // API Configuration Handlers
   const updateApiConfig = (updates: Partial<ApiIntegrationsConfig>) => {
-    setApiConfigState((prev) => {
-      const next = { ...prev, ...updates, autoFulfillWithCJ: false };
-      try {
-        localStorage.setItem('tarek_store_api_config', JSON.stringify(next));
-      } catch (e) {
-        console.warn(e);
-      }
-      return next;
-    });
-    showToast('تم حفظ إعدادات الربط. مفاتيح الخادم لا تُحفظ في المتصفح.');
+    setApiConfigState((prev) => ({ ...prev, ...updates, cjConnected: false, autoFulfillWithCJ: false }));
+    showToast('تم تحديث الإعدادات لهذه الجلسة فقط؛ لا تُحفظ بيانات الربط في المتصفح.');
   };
 
   const testCjConnection = async (): Promise<{ success: boolean; message: string; latencyMs?: number; data?: any }> => {

@@ -304,44 +304,26 @@ export const MerchantDashboardScreen: React.FC = () => {
                 تكامل الـ API والتسليم التلقائي (Developer API & Webhooks)
               </h3>
               <p className="text-xs text-slate-400 mt-1">
-                ربط موقعك أو متجرك أو بوت الديسكورد لشحن الألعاب تلقائياً في ثوانٍ معدودة.
+                تكامل واجهة التاجر غير منشور؛ لا يوجد مفتاح أو مسار طلب صالح للاستخدام.
               </p>
             </div>
           </div>
 
           <div className="space-y-3 text-xs">
             <div>
-              <label className="text-slate-300 block mb-1 font-semibold">مفتاح الـ API للتاجر (Live API Key):</label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  readOnly
-                  value="trk_live_99a8b1c4e7f23049b812048aa"
-                  className="flex-1 px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg font-mono text-cyan-300"
-                />
-                <button
-                  onClick={() => showToast('تم نسخ مفتاح الـ API بنجاح.')}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold rounded-lg"
-                >
-                  نسخ
-                </button>
+              <label className="text-slate-300 block mb-1 font-semibold">واجهة التاجر:</label>
+              <div className="px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-amber-300">
+                غير منشورة — لا تستخدم أي مفتاح أو مثال API من هذه الشاشة.
               </div>
             </div>
 
             <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 font-mono text-[11px] text-slate-300 space-y-2">
-              <div className="text-cyan-400 font-bold">// Endpoint: POST /api/v1/orders/instant-recharge</div>
-              <div className="text-slate-400">{`{
-  "api_key": "trk_live_...",
-  "product_id": "prod-pubg-uc",
-  "package_id": "uc-600",
-  "player_id": "519284710",
-  "server": "mena"
-}`}</div>
+              <div className="text-slate-400">لا توجد نقطة نهاية API عامة متاحة في هذه النسخة.</div>
             </div>
 
-            <div className="flex items-center gap-2 text-emerald-400 font-semibold pt-2">
-              <CheckCircle className="w-4 h-4" />
-              <span>خوادم الـ API تعمل بكفاءة 99.98% مع تسليم فوري</span>
+            <div className="flex items-center gap-2 text-amber-300 font-semibold pt-2">
+              <AlertCircle className="w-4 h-4" />
+              <span>واجهة API والتسليم غير مفعّلين</span>
             </div>
           </div>
         </div>

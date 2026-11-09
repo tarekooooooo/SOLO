@@ -34,7 +34,7 @@ export const AuthScreen: React.FC = () => {
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [telegramUsernameInput, setTelegramUsernameInput] = useState('@TarekGamer');
+  const [telegramUsernameInput, setTelegramUsernameInput] = useState('');
   const [showTelegramPrompt, setShowTelegramPrompt] = useState(false);
   const [authError, setAuthError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -133,12 +133,12 @@ export const AuthScreen: React.FC = () => {
             <Gamepad2 className="w-6 h-6" />
           </div>
           <h2 className="text-xl sm:text-2xl font-black text-white">
-            {mode === 'login' ? 'مرحباً بك مجدداً في متجر طارق' : mode === 'register' ? 'إنشاء حساب لاعب جديد' : 'استعادة كلمة المرور'}
+            {mode === 'login' ? 'مرحباً بك مجدداً في SOLO' : mode === 'register' ? 'إنشاء حساب في SOLO' : 'استعادة كلمة المرور'}
           </h2>
           <p className="text-xs text-slate-400">
             {mode === 'login' 
-              ? 'سجل دخولك للوصول إلى محفظتك، شحناتك، وخصومات المتجر الحصرية' 
-              : 'انضم لآلاف اللاعبين واحصل على رصيد مكافأة وتتبع سريع لطلباتك'}
+              ? 'سجل دخولك لإدارة حسابك. الشراء والتسليم غير متاحين حتى اكتمال الربط.'
+              : 'أنشئ حسابًا في SOLO. قد تحتاج إلى تأكيد بريدك الإلكتروني قبل تسجيل الدخول.'}
           </p>
         </div>
 
@@ -248,7 +248,7 @@ export const AuthScreen: React.FC = () => {
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="طارق الأحمد"
+                  placeholder="اسمك"
                   className="w-full pl-4 pr-10 py-2.5 rounded-xl bg-slate-900/90 border border-slate-800 text-white text-xs focus:border-cyan-500 focus:outline-none"
                 />
                 <User className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
@@ -264,7 +264,7 @@ export const AuthScreen: React.FC = () => {
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="tarekai042@gmail.com"
+                placeholder="name@example.com"
                 className="w-full pl-4 pr-10 py-2.5 rounded-xl bg-slate-900/90 border border-slate-800 text-white text-xs focus:border-cyan-500 focus:outline-none"
               />
               <Mail className="w-4 h-4 text-slate-400 absolute right-3 top-3" />
@@ -315,6 +315,7 @@ export const AuthScreen: React.FC = () => {
         </form>
 
         {/* API Credentials Info Banner */}
+        {import.meta.env.DEV && (
         <div className="p-4 rounded-2xl bg-slate-900/70 border border-slate-800 text-xs space-y-2.5">
           <div className="flex items-center justify-between">
             <span className="font-bold text-slate-200 flex items-center gap-1.5">
@@ -354,6 +355,7 @@ export const AuthScreen: React.FC = () => {
             مفاتيح التكامل السرية لا تُحفظ في المتصفح؛ تُدار على الخادم فقط.
           </p>
         </div>
+        )}
       </div>
     </div>
   );

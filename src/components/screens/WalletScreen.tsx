@@ -20,7 +20,6 @@ import { WalletTransaction } from '../../types';
 
 export const WalletScreen: React.FC = () => {
   const { 
-    customerBalanceUSD, 
     depositToWallet, 
     withdrawFromWallet, 
     transactions, 
@@ -39,7 +38,7 @@ export const WalletScreen: React.FC = () => {
   // Withdraw modal state
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState('20');
-  const [iban, setIban] = useState('SA0380000000608010167519');
+  const [iban, setIban] = useState('');
 
   const handleDepositSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,7 +65,7 @@ export const WalletScreen: React.FC = () => {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Wallet className="w-5 h-5 text-cyan-400" />
-          <h2 className="text-lg font-bold text-white">المحفظة الرقمية (My Wallet)</h2>
+          <h2 className="text-lg font-bold text-white">المحفظة الرقمية — قيد الإعداد</h2>
         </div>
         <span className="font-mono text-xs text-cyan-400">PAGE 06 // WALLET</span>
       </div>
@@ -76,7 +75,7 @@ export const WalletScreen: React.FC = () => {
         <div className="relative z-10 flex flex-col justify-between space-y-6">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-cyan-300 tracking-wide uppercase">
-              الرصيد المتاح للاستخدام الفوري
+              حالة رصيد الحساب
             </span>
             <button
               onClick={() => setShowBalance(!showBalance)}
@@ -89,29 +88,29 @@ export const WalletScreen: React.FC = () => {
 
           <div>
             <div className="text-3xl sm:text-4xl font-black font-mono tracking-tight text-white">
-              {showBalance ? formatPrice(customerBalanceUSD) : '••••••••••'}
+              {showBalance ? 'غير متاح' : '••••••••••'}
             </div>
             <p className="text-xs text-slate-400 mt-1">
-              مربوط بمحفظة اللاعب الموثقة • أمان مشفر 256-bit
+              لا تُعرض أرصدة لأن المحفظة غير موصولة حاليًا ببيانات الحساب.
             </p>
           </div>
 
           {/* Quick Action Buttons: شحن & سحب */}
           <div className="grid grid-cols-2 gap-3 pt-2">
             <button
-              onClick={() => setShowDepositModal(true)}
-              className="py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/30 transition-all hover:scale-105"
+              disabled
+              className="py-3 px-4 rounded-xl bg-slate-800 text-slate-500 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 cursor-not-allowed"
             >
               <Plus className="w-4 h-4 stroke-[3]" />
-              <span>شحن المحفظة</span>
+              <span>الشحن غير متاح</span>
             </button>
 
             <button
-              onClick={() => setShowWithdrawModal(true)}
-              className="py-3 px-4 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-100 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 border border-slate-700 transition-colors"
+              disabled
+              className="py-3 px-4 rounded-xl bg-slate-800 text-slate-500 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 border border-slate-700 cursor-not-allowed"
             >
               <ArrowDownLeft className="w-4 h-4 text-cyan-400" />
-              <span>سحب الرصيد</span>
+              <span>السحب غير متاح</span>
             </button>
           </div>
         </div>
@@ -206,52 +205,50 @@ export const WalletScreen: React.FC = () => {
       {/* Tab 2: Payment Methods */}
       {activeTab === 'methods' && (
         <div className="p-5 rounded-2xl bg-[#0f1523] border border-cyan-500/20 space-y-4">
-          <h3 className="text-sm font-bold text-white">طرق الدفع والوسائل المربوطة</h3>
+          <h3 className="text-sm font-bold text-white">طرق الدفع — غير مفعّلة</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
             <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <CreditCard className="w-5 h-5 text-cyan-400" />
+                <Coins className="w-5 h-5 text-cyan-400" />
                 <div>
-                  <span className="font-bold text-white block">بطاقة فيزا •••• 4022</span>
-                  <span className="text-[10px] text-slate-400 font-mono">تنتهي 10/28</span>
+                  <span className="font-bold text-white block">ATLOS للعملات الرقمية</span>
+                  <span className="text-[10px] text-slate-400">بانتظار إعداد الإشعارات والتحقق</span>
                 </div>
               </div>
-              <span className="text-[10px] px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800 font-semibold">
-                افتراضي
-              </span>
+              <span className="text-[10px] text-amber-300 font-semibold">غير مفعّل</span>
             </div>
 
             <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <Smartphone className="w-5 h-5 text-emerald-400" />
                 <div>
-                  <span className="font-bold text-white block">Apple Pay & STC Pay</span>
-                  <span className="text-[10px] text-slate-400">دفع فوري بلمسة واحدة</span>
+                  <span className="font-bold text-white block">ليبيانا والمدار</span>
+                  <span className="text-[10px] text-slate-400">بانتظار اكتمال مراجعة الدفع اليدوي</span>
                 </div>
               </div>
-              <span className="text-[10px] text-emerald-400 font-semibold">مفعل</span>
+              <span className="text-[10px] text-amber-300 font-semibold">غير مفعّل</span>
             </div>
 
             <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <Coins className="w-5 h-5 text-amber-400" />
+                <Building2 className="w-5 h-5 text-amber-400" />
                 <div>
-                  <span className="font-bold text-white block">العملات الرقمية (USDT-TRC20)</span>
-                  <span className="text-[10px] text-slate-400 font-mono">شبكة Tron السريعة</span>
+                  <span className="font-bold text-white block">تحويل مصرفي</span>
+                  <span className="text-[10px] text-slate-400">بانتظار إعداد ومراجعة آمنة</span>
                 </div>
               </div>
-              <span className="text-[10px] text-slate-400 font-semibold">جاهز</span>
+              <span className="text-[10px] text-amber-300 font-semibold">غير مفعّل</span>
             </div>
 
             <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <Building2 className="w-5 h-5 text-blue-400" />
+                <CreditCard className="w-5 h-5 text-blue-400" />
                 <div>
-                  <span className="font-bold text-white block">التحويل البنكي المباشر (IBAN)</span>
-                  <span className="text-[10px] text-slate-400">كافة البنوك الخليجية والمصرية</span>
+                  <span className="font-bold text-white block">Payoneer</span>
+                  <span className="text-[10px] text-slate-400">بانتظار إعداد ومراجعة آمنة</span>
                 </div>
               </div>
-              <span className="text-[10px] text-slate-400 font-semibold">جاهز</span>
+              <span className="text-[10px] text-amber-300 font-semibold">غير مفعّل</span>
             </div>
           </div>
         </div>

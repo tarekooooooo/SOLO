@@ -36,7 +36,7 @@ export const CommunityScreen: React.FC = () => {
       handle: '@sara_val',
       avatar: '👑',
       time: 'منذ 4 ساعات',
-      content: 'شحنت 600 UC من متجر طارق ستور ووصلت الشدات في أقل من 20 ثانية ما شاء الله! أفضل وأسرع متجر رقمي في الخليج ⚡💙',
+      content: 'منشور تجريبي داخل واجهة المجتمع؛ لا يمثل تقييمًا أو عملية شراء حقيقية.',
       likes: 48,
       liked: true,
       comments: 12,
@@ -72,8 +72,8 @@ export const CommunityScreen: React.FC = () => {
 
     const newP = {
       id: `p-${Date.now()}`,
-      author: 'TarekGamer',
-      handle: '@tarekgamer',
+      author: 'Demo Player',
+      handle: '@demo',
       avatar: '🕹️',
       time: 'الآن',
       content: newPostText,

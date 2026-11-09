@@ -108,6 +108,7 @@ export const HomeScreen: React.FC = () => {
         </div>
 
         {/* API Settings Quick Access */}
+        {import.meta.env.DEV && (
         <button
           onClick={() => setIsApiModalOpen(true)}
           className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-400 border border-cyan-500/30 text-xs font-bold flex items-center gap-2 transition-colors shrink-0"
@@ -116,6 +117,7 @@ export const HomeScreen: React.FC = () => {
           <Key className="w-3.5 h-3.5" />
           <span className="hidden sm:inline">مفاتيح الربط والـ API</span>
         </button>
+        )}
       </div>
 
       {/* Top Search Bar & Greeting */}
@@ -139,38 +141,37 @@ export const HomeScreen: React.FC = () => {
         <div className="relative z-10 max-w-xl space-y-4">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-semibold">
             <Flame className="w-3.5 h-3.5 text-amber-400" />
-            <span>عروض مجدية وتخفيضات أسبوعية</span>
+            <span>متجر SOLO قيد الإعداد</span>
           </div>
 
           <h2 className="text-2xl sm:text-4xl font-black text-white leading-tight">
-            شحن مباشر وسريع <br className="hidden sm:inline" />
+            نجهّز كتالوج SOLO <br className="hidden sm:inline" />
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-400 to-indigo-300">
-              لكافة ألعابك وبطاقاتك المفضلة
+              لعرض منتجات موثّقة فقط
             </span>
           </h2>
 
           <p className="text-xs sm:text-sm text-slate-300 leading-relaxed max-w-md">
-            تسليم فوري ومباشر في أقل من 60 ثانية عبر معرّف اللاعب (Player ID) وبنك الأكواد الرقمية مع ضمان الأمان والمحفظة.
+            لا توجد منتجات منشورة حاليًا. الدفع والتسليم متوقفان حتى اكتمال ربط المخزون وبوابات الدفع؛ لا تحوّل أموالًا.
           </p>
 
           <div className="flex flex-wrap items-center gap-3 pt-2">
             <button
               onClick={() => {
-                setSelectedProductId('prod-pubg-uc');
-                setActiveScreen('product');
+                setActiveScreen('auth');
               }}
               className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-xs sm:text-sm shadow-lg shadow-cyan-600/30 flex items-center gap-2 transition-all hover:scale-105"
             >
-              <span>تسوق الآن</span>
+              <span>تسجيل الدخول أو إنشاء حساب</span>
               <ArrowLeft className="w-4 h-4" />
             </button>
 
             <button
-              onClick={() => setActiveScreen('tournaments')}
+              onClick={() => setActiveScreen('physical_store')}
               className="px-5 py-2.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700 text-slate-200 font-semibold text-xs sm:text-sm flex items-center gap-2 transition-colors"
             >
               <Trophy className="w-4 h-4 text-amber-400" />
-              <span>البطولات والجوائز</span>
+              <span>حالة المنتجات المادية</span>
             </button>
           </div>
         </div>
@@ -258,11 +259,11 @@ export const HomeScreen: React.FC = () => {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-base font-bold text-white">المنتجات الأكثر طلباً ومقترحة</h3>
-            <p className="text-xs text-slate-400">شحن آمن وفوري مع أفضل الأسعار وباقات الشحن الحصرية</p>
+            <h3 className="text-base font-bold text-white">كتالوج المنتجات المنشورة</h3>
+            <p className="text-xs text-slate-400">يعرض هذا القسم المنتجات التي أُضيفت إلى قاعدة المتجر فقط.</p>
           </div>
           <span className="text-xs font-mono text-cyan-400 bg-cyan-950/60 px-2.5 py-1 rounded-lg border border-cyan-800">
-            {filteredProducts.length} منتج متوفر
+            {filteredProducts.length ? `${filteredProducts.length} منتج منشور` : 'لا توجد منتجات منشورة'}
           </span>
         </div>
 
@@ -294,12 +295,8 @@ export const HomeScreen: React.FC = () => {
                     </div>
 
                     <div className="absolute bottom-2.5 right-2.5 left-2.5 flex items-center justify-between text-xs text-white">
-                      <span className="flex items-center gap-1 font-bold">
-                        <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
-                        {product.rating}
-                      </span>
-                      <span className="text-[11px] text-emerald-400 bg-emerald-950/70 px-2 py-0.5 rounded border border-emerald-800 font-semibold">
-                        {product.deliveryType === 'direct_id_recharge' ? 'شحن فوري بالآيدي' : 'كود رقمي فوري'}
+                      <span className="text-[11px] text-amber-200 bg-amber-950/70 px-2 py-0.5 rounded border border-amber-800 font-semibold">
+                        الشراء متوقف مؤقتًا
                       </span>
                     </div>
                   </div>
@@ -342,7 +339,7 @@ export const HomeScreen: React.FC = () => {
                       }}
                       className="px-3.5 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold transition-all shadow-md shadow-cyan-600/20"
                     >
-                      شراء وشحن
+                      عرض التفاصيل
                     </button>
                   </div>
                 </div>
@@ -350,6 +347,11 @@ export const HomeScreen: React.FC = () => {
               </div>
             );
           })}
+          {filteredProducts.length === 0 && (
+            <div role="status" className="sm:col-span-2 lg:col-span-3 rounded-2xl border border-slate-800 bg-slate-900/70 p-6 text-center text-sm text-slate-300">
+              لا توجد منتجات متاحة للشراء الآن. سنعرض المنتج هنا بعد إضافته والتحقق من مخزونه وتسليمه.
+            </div>
+          )}
         </div>
       </div>
 

@@ -54,6 +54,15 @@ const MainLayout: React.FC = () => {
   } = useStore();
 
   const renderActiveScreenContent = () => {
+    const productionSafeScreens = ['splash', 'login', 'auth', 'physical_store', 'home', 'product'];
+    if (!import.meta.env.DEV && !productionSafeScreens.includes(activeScreen)) {
+      return (
+        <div role="status" className="max-w-2xl mx-auto my-12 rounded-3xl border border-slate-800 bg-[#0f1523] p-8 text-center space-y-3">
+          <h2 className="text-xl font-black text-white">هذه الميزة قيد الإعداد</h2>
+          <p className="text-sm leading-relaxed text-slate-300">لم نربطها بعد بخادم وقاعدة بيانات موثوقين؛ لن نعرض بيانات تجريبية أو نقبل عمليات من هذه الصفحة.</p>
+        </div>
+      );
+    }
     if (isAuthLoading && (activeScreen === 'admin' || activeScreen === 'merchant')) {
       return <div className="py-20 text-center text-cyan-300">جارٍ التحقق من صلاحية الحساب…</div>;
     }
@@ -188,50 +197,50 @@ const MainLayout: React.FC = () => {
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3 text-center text-xs">
             <div className="p-3 rounded-2xl bg-slate-900/60 border border-slate-800/80">
               <ShieldCheck className="w-5 h-5 text-cyan-400 mx-auto mb-1.5" />
-              <span className="font-bold text-white block">محفظة آمنة</span>
-              <span className="text-[10px] text-slate-500">حماية مشفرة</span>
+              <span className="font-bold text-white block">المحفظة</span>
+              <span className="text-[10px] text-slate-500">غير مفعّلة</span>
             </div>
 
             <div className="p-3 rounded-2xl bg-slate-900/60 border border-slate-800/80">
               <Gamepad2 className="w-5 h-5 text-amber-400 mx-auto mb-1.5" />
-              <span className="font-bold text-white block">بطولات حصرية</span>
-              <span className="text-[10px] text-slate-500">جوائز نقدية</span>
+              <span className="font-bold text-white block">البطولات</span>
+              <span className="text-[10px] text-slate-500">قيد الإعداد</span>
             </div>
 
             <div className="p-3 rounded-2xl bg-slate-900/60 border border-slate-800/80">
               <Sparkles className="w-5 h-5 text-purple-400 mx-auto mb-1.5" />
-              <span className="font-bold text-white block">مجتمع لاعبين</span>
-              <span className="text-[10px] text-slate-500">تفاعل وتحدي</span>
+              <span className="font-bold text-white block">المجتمع</span>
+              <span className="text-[10px] text-slate-500">غير متصل</span>
             </div>
 
             <div className="p-3 rounded-2xl bg-slate-900/60 border border-slate-800/80">
               <PackageCheck className="w-5 h-5 text-emerald-400 mx-auto mb-1.5" />
-              <span className="font-bold text-white block">متجر شامل</span>
-              <span className="text-[10px] text-slate-500">كافة الألعاب</span>
+              <span className="font-bold text-white block">الكتالوج</span>
+              <span className="text-[10px] text-slate-500">قيد التجهيز</span>
             </div>
 
             <div className="p-3 rounded-2xl bg-slate-900/60 border border-slate-800/80">
               <Zap className="w-5 h-5 text-cyan-400 mx-auto mb-1.5" />
-              <span className="font-bold text-white block">تسليم فوري</span>
-              <span className="text-[10px] text-slate-500">أقل من 60 ثانية</span>
+              <span className="font-bold text-white block">التسليم</span>
+              <span className="text-[10px] text-slate-500">غير مفعّل</span>
             </div>
 
             <div className="p-3 rounded-2xl bg-slate-900/60 border border-slate-800/80">
               <Monitor className="w-5 h-5 text-blue-400 mx-auto mb-1.5" />
-              <span className="font-bold text-white block">API للمطورين</span>
-              <span className="text-[10px] text-slate-500">ربط خوادم وتجار</span>
+              <span className="font-bold text-white block">واجهات API</span>
+              <span className="text-[10px] text-slate-500">غير متاحة</span>
             </div>
 
             <div className="p-3 rounded-2xl bg-slate-900/60 border border-slate-800/80">
               <ShieldCheck className="w-5 h-5 text-teal-400 mx-auto mb-1.5" />
-              <span className="font-bold text-white block">نظام تجار متكامل</span>
-              <span className="text-[10px] text-slate-500">إدارة المخزون</span>
+              <span className="font-bold text-white block">إدارة المخزون</span>
+              <span className="text-[10px] text-slate-500">قيد الربط</span>
             </div>
 
             <div className="p-3 rounded-2xl bg-slate-900/60 border border-slate-800/80">
               <Zap className="w-5 h-5 text-amber-400 mx-auto mb-1.5" />
-              <span className="font-bold text-white block">متعدد العملات</span>
-              <span className="text-[10px] text-slate-500">دولار، ريال، جنيه</span>
+              <span className="font-bold text-white block">الدفع</span>
+              <span className="text-[10px] text-slate-500">غير متاح حاليًا</span>
             </div>
           </div>
 
@@ -240,10 +249,10 @@ const MainLayout: React.FC = () => {
             <div className="flex items-center gap-3">
               <span className="text-white font-extrabold tracking-wider">SOLO</span>
               <span>•</span>
-              <span>Play • Shop • Compete • Earn</span>
+              <span>المتجر والخدمات قيد الإعداد</span>
             </div>
             <div>
-              منصة متكاملة للألعاب الرقمية وإدارة المنتجات وتجهيز طلبات العملاء بشكل فعال © 2026
+              نسخة معاينة من متجر SOLO؛ لا يُقبل الدفع ولا يُنفذ التسليم حاليًا © 2026
             </div>
           </div>
 
@@ -253,7 +262,7 @@ const MainLayout: React.FC = () => {
       {/* Global Modals */}
       <OrderFulfillmentModal />
       <OriginalDesignsModal />
-      <ApiSettingsModal />
+      {import.meta.env.DEV && <ApiSettingsModal />}
 
     </div>
   );

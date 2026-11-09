@@ -711,7 +711,7 @@ export const ApiSettingsModal: React.FC = () => {
                     اسم بوت تيليجرام (Telegram Bot Username):
                   </div>
                   <p className="text-slate-300 leading-relaxed">
-                    - راسل <strong className="text-cyan-400">@BotFather</strong> على تيليجرام وأرسل له اسم المتجر، وأعطني اليوزر (مثال: @TarekStoreBot).
+                    - راسل <strong className="text-cyan-400">@BotFather</strong> على تيليجرام وأرسل له اسم SOLO، ثم استخدم اسم المستخدم الذي تختاره لبوتك.
                   </p>
                 </div>
               </div>

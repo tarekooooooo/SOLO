@@ -41,8 +41,8 @@ export const INITIAL_PRODUCTS: Product[] = [
       { id: 'uc-3000', name: '3000 UC + 850 مجاناً', amount: 3850, priceUSD: 46.99, bonus: '+850 UC' },
       { id: 'uc-6000', name: '6000 UC + 2100 مجاناً', amount: 8100, priceUSD: 89.99, bonus: '+2100 UC' },
     ],
-    merchantId: 'm-tarek',
-    merchantName: 'متجر طارق الرسمي',
+    merchantId: 'm-solo-demo',
+    merchantName: 'كتالوج SOLO التجريبي',
     inStock: true,
     totalSold: 12450,
     createdAt: '2025-01-10',
@@ -79,8 +79,8 @@ export const INITIAL_PRODUCTS: Product[] = [
         amount: 100, 
         priceUSD: 99.00,},
     ],
-    merchantId: 'm-tarek',
-    merchantName: 'متجر طارق الرسمي',
+    merchantId: 'm-solo-demo',
+    merchantName: 'كتالوج SOLO التجريبي',
     inStock: true,
     totalSold: 8930,
     createdAt: '2025-01-15',
@@ -101,8 +101,8 @@ export const INITIAL_PRODUCTS: Product[] = [
       { id: 'psn-50', name: 'بطاقة $50 PSN', amount: 50, priceUSD: 51.00,},
       { id: 'psn-plus-3m', name: 'اشتراك بلس 3 أشهر', amount: 3, priceUSD: 24.99,},
     ],
-    merchantId: 'm-tarek',
-    merchantName: 'متجر طارق الرسمي',
+    merchantId: 'm-solo-demo',
+    merchantName: 'كتالوج SOLO التجريبي',
     inStock: true,
     totalSold: 6420,
     createdAt: '2025-02-01',
@@ -121,8 +121,8 @@ export const INITIAL_PRODUCTS: Product[] = [
       { id: 'xbox-1m', name: 'اشتراك شهر واحد', amount: 1, priceUSD: 14.99,},
       { id: 'xbox-3m', name: 'اشتراك 3 أشهر', amount: 3, priceUSD: 41.99,},
     ],
-    merchantId: 'm-tarek',
-    merchantName: 'متجر طارق الرسمي',
+    merchantId: 'm-solo-demo',
+    merchantName: 'كتالوج SOLO التجريبي',
     inStock: true,
     totalSold: 3200,
     createdAt: '2025-02-10',
@@ -143,8 +143,8 @@ export const INITIAL_PRODUCTS: Product[] = [
       { id: 'ff-520', name: '520+52 جوهرة', amount: 572, priceUSD: 5.30 },
       { id: 'ff-1060', name: '1060+106 جوهرة', amount: 1166, priceUSD: 10.50 },
     ],
-    merchantId: 'm-tarek',
-    merchantName: 'متجر طارق الرسمي',
+    merchantId: 'm-solo-demo',
+    merchantName: 'كتالوج SOLO التجريبي',
     inStock: true,
     totalSold: 5120,
     createdAt: '2025-02-12',
@@ -163,8 +163,8 @@ export const INITIAL_PRODUCTS: Product[] = [
       { id: 'rbx-800', name: '800 Robux ($10)', amount: 800, priceUSD: 10.00,},
       { id: 'rbx-2000', name: '2,000 Robux ($25)', amount: 2000, priceUSD: 25.00,},
     ],
-    merchantId: 'm-tarek',
-    merchantName: 'متجر طارق الرسمي',
+    merchantId: 'm-solo-demo',
+    merchantName: 'كتالوج SOLO التجريبي',
     inStock: true,
     totalSold: 4100,
     createdAt: '2025-02-18',
@@ -186,7 +186,7 @@ export const INITIAL_ORDERS: Order[] = [
     platform: 'pubg',
     priceUSD: 9.49,
     deliveryType: 'direct_id_recharge',
-    targetPlayerId: '519284710',
+    targetPlayerId: 'demo-player-id',
     targetPlayerName: 'Sniper_KSA',
     isGift: false,
     status: 'pending',
@@ -361,9 +361,9 @@ export const INITIAL_TOURNAMENTS: Tournament[] = [
 ];
 
 export const CURRENT_PLAYER_PROFILE: PlayerProfile = {
-  id: 'usr-tarek',
-  username: 'TarekGamer',
-  tag: '#TRK2026',
+  id: 'usr-demo',
+  username: 'DemoPlayer',
+  tag: '#DEMO',
   avatar: '/assets/aistudio/file_000000007e1c81f5ba66efa05ab9f2e5_0ba40384.png',
   level: 50,
   points: 1000,
@@ -372,10 +372,10 @@ export const CURRENT_PLAYER_PROFILE: PlayerProfile = {
   joinedTournaments: 120,
   achievementsCount: 8,
   connectedPlatforms: {
-    steam: 'Tarek_Steam99',
-    playstation: 'Tarek_PSN_Pro',
-    xbox: 'TarekXboxOne',
-    pubgId: '519284710',
+    steam: 'demo_steam',
+    playstation: 'demo_psn',
+    xbox: 'demo_xbox',
+    pubgId: 'demo-player-id',
   },
   favoriteGames: ['PUBG Mobile', 'Call of Duty: Warzone', 'Fortnite', 'GTA V', 'EA FC 26'],
 };
@@ -390,7 +390,7 @@ export const INITIAL_ASSISTANTS: StaffAssistant[] = [
   {
     id: 'ast-1',
     name: 'أحمد الشمري',
-    email: 'ahmed.support@tarekstor.com',
+    email: 'ahmed.support@example.invalid',
     phone: '+966551122334',
     roleTitle: 'مساعد أول لتجهيز وشحن الطلبات',
     permissions: ['fulfill_orders', 'customer_support', 'manage_products'],
@@ -402,7 +402,7 @@ export const INITIAL_ASSISTANTS: StaffAssistant[] = [
   {
     id: 'ast-2',
     name: 'ريم العتيبي',
-    email: 'reem.cs@tarekstor.com',
+    email: 'reem.cs@example.invalid',
     phone: '+966509988776',
     roleTitle: 'مشرفة خدمة العملاء والدعم الفني',
     permissions: ['customer_support', 'fulfill_orders'],
@@ -414,7 +414,7 @@ export const INITIAL_ASSISTANTS: StaffAssistant[] = [
   {
     id: 'ast-3',
     name: 'محمد عبد الرحمن',
-    email: 'm.abdul@tarekstor.com',
+    email: 'm.abdul@example.invalid',
     phone: '+201099881122',
     roleTitle: 'مسؤول بنك الأكواد والمخزون الرقمي',
     permissions: ['manage_products', 'fulfill_orders'],
@@ -445,7 +445,7 @@ export const INITIAL_SUPPORT_TICKETS: SupportTicket[] = [
         id: 'msg-1',
         sender: 'customer',
         senderName: 'خالد العتيبي',
-        text: 'السلام عليكم، قمت بالطلب قبل قليل وأريد التأكد هل تم شحن الشدات لمعرف الحساب 519284710 أم لا؟',
+        text: 'هذه رسالة دعم تجريبية وليست طلبًا حقيقيًا.',
         time: 'منذ 15 دقيقة',
       },
       {
@@ -505,7 +505,7 @@ export const INITIAL_SUPPORT_TICKETS: SupportTicket[] = [
         id: 'msg-5',
         sender: 'support',
         senderName: 'ريم العتيبي (خدمة العملاء)',
-        text: 'أهلاً بك يا عمر دائماً في متجر طارق! سعداء بخدمتك ونتمنى لك وقتاً ممتعاً 🎮',
+        text: 'رسالة ترحيب تجريبية من SOLO؛ لا تمثل محادثة أو طلبًا حقيقيًا.',
         time: 'منذ ساعة و50 دقيقة',
       },
     ],
@@ -513,24 +513,24 @@ export const INITIAL_SUPPORT_TICKETS: SupportTicket[] = [
 ];
 
 export const DEFAULT_API_CONFIG: ApiIntegrationsConfig = {
-  cjAccountEmail: 'tarekai042@gmail.com',
-  cjAppId: 'CJ-STORE-86628',
+  cjAccountEmail: '',
+  cjAppId: '',
   cjConnected: false,
-  googleClientId: '60028700364-game-store.apps.googleusercontent.com',
-  telegramBotUsername: '@TarekStoreBot',
+  googleClientId: '',
+  telegramBotUsername: '',
   autoFulfillWithCJ: false,
   defaultMarkupPercent: 35,
 };
 
 export const INITIAL_AUTH_USER: AuthUser = {
-  id: 'usr-tarek-admin',
-  name: 'طارق الأحمد (المدير العام)',
-  email: 'tarekai042@gmail.com',
-  provider: 'google',
-  role: 'admin',
+  id: 'usr-demo',
+  name: 'مدير تجريبي',
+  email: 'admin@example.invalid',
+  provider: 'email',
+  role: 'customer',
   avatar: 'https://images.unsplash.com/photo-1566492031773-4f4e44671857?w=150&auto=format&fit=crop&q=80',
-  telegramUsername: '@TarekStoreAdmin',
-  phone: '+966501234567',
+  telegramUsername: '',
+  phone: '',
 };
 
 export const INITIAL_PHYSICAL_PRODUCTS: PhysicalProduct[] = [
@@ -802,6 +802,5 @@ export const INITIAL_PHYSICAL_ORDERS: PhysicalOrder[] = [
     paymentMethod: 'Apple Pay',
   },
 ];
-
 
 

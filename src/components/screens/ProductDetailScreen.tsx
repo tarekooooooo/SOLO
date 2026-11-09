@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { 
   ArrowRight, 
-  Star, 
   ShieldCheck, 
   Zap, 
   Gift, 
@@ -32,18 +31,16 @@ export const ProductDetailScreen: React.FC = () => {
     showToast
   } = useStore();
 
-  const product: Product = products.find((p: Product) => p.id === selectedProductId) || products[0];
-
-  const [selectedPackage, setSelectedPackage] = useState<ProductPackage>(
-    product.packages[2] || product.packages[0]
-  );
+  const product: Product | undefined = products.find((p: Product) => p.id === selectedProductId) || products[0];
+  const [selectedPackageId, setSelectedPackageId] = useState<string | null>(null);
+  const selectedPackage = product?.packages.find((pkg: ProductPackage) => pkg.id === selectedPackageId) || product?.packages[0];
   const [playerId, setPlayerId] = useState('');
   const [playerName, setPlayerName] = useState('');
   const [isVerifyingId, setIsVerifyingId] = useState(false);
   const [idVerified, setIdVerified] = useState(false);
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('libyana');
-  const isDirectRecharge = product.deliveryType === 'direct_id_recharge';
+  const isDirectRecharge = product?.deliveryType === 'direct_id_recharge';
   const isManualPayment = ['libyana', 'almadar', 'bank_transfer', 'payoneer'].includes(paymentMethod);
 
   const handleVerifyPlayerId = () => {
@@ -60,6 +57,16 @@ export const ProductDetailScreen: React.FC = () => {
   const handleSendAsGift = () => {
     setActiveScreen('gift');
   };
+
+  if (!product || !selectedPackage) {
+    return (
+      <div className="max-w-2xl mx-auto rounded-3xl border border-slate-800 bg-[#0f1523] p-8 text-center space-y-4">
+        <h2 className="text-xl font-black text-white">لا توجد منتجات منشورة حاليًا</h2>
+        <p className="text-sm leading-relaxed text-slate-300">كتالوج SOLO قيد التجهيز. لن يظهر منتج هنا حتى يُضاف إلى قاعدة المتجر وتُتحقق بياناته.</p>
+        <button onClick={() => setActiveScreen('home')} className="px-5 py-2.5 rounded-xl bg-cyan-600 text-white font-bold text-sm">العودة إلى المتجر</button>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-2xl mx-auto space-y-6 pb-12">
@@ -101,10 +108,6 @@ export const ProductDetailScreen: React.FC = () => {
           <div className="absolute bottom-4 right-4 left-4 flex items-end justify-between">
             <div>
               <div className="flex items-center gap-2 mb-1">
-                <span className="flex items-center gap-1 text-xs font-bold text-amber-400 bg-black/60 px-2 py-0.5 rounded-md backdrop-blur-sm">
-                  <Star className="w-3.5 h-3.5 fill-amber-400" />
-                  {product.rating} (4.8k تقييم)
-                </span>
                 <span className="text-[11px] text-cyan-300 bg-cyan-950/60 px-2 py-0.5 rounded-md border border-cyan-800/60">
                   {product.packages.length} باقات متوفرة
                 </span>
@@ -121,20 +124,10 @@ export const ProductDetailScreen: React.FC = () => {
             {product.description}
           </p>
 
-          {/* Quick trust metrics */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs">
-            <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center gap-2">
-              <Zap className="w-4 h-4 text-cyan-400" />
-              <span className="text-slate-300">تسليم فوري ومباشر</span>
-            </div>
-            <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              <span className="text-slate-300">شحن رسمي 100% مضمون</span>
-            </div>
-            <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 flex items-center gap-2 col-span-2 sm:col-span-1">
-              <Flame className="w-4 h-4 text-amber-400" />
-              <span className="text-slate-300">باقات مضاعفة وبونص</span>
-            </div>
+          {/* Integration status */}
+          <div role="status" className="p-3 rounded-xl bg-slate-900/80 border border-amber-700/50 flex items-center gap-2 text-xs text-amber-200">
+            <Info className="w-4 h-4 shrink-0" />
+            <span>تأكيد الدفع والتسليم غير مفعّل حاليًا؛ لا تحوّل أموالًا ولا تعتبر المنتج متاحًا للشراء.</span>
           </div>
 
           {/* اختر الكمية (Select Package / Quantity - Exact layout from Screen 4) */}
@@ -153,7 +146,7 @@ export const ProductDetailScreen: React.FC = () => {
                 return (
                   <button
                     key={pkg.id}
-                    onClick={() => setSelectedPackage(pkg)}
+                    onClick={() => setSelectedPackageId(pkg.id)}
                     className={`relative p-3.5 rounded-2xl border text-right transition-all flex flex-col justify-between ${
                       isSelected
                         ? 'border-cyan-400 bg-cyan-950/40 shadow-lg shadow-cyan-500/20'

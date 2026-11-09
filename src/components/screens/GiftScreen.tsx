@@ -28,8 +28,8 @@ export const GiftScreen: React.FC = () => {
   const pkg = product.packages[1] || product.packages[0];
 
   const [deliveryMethod, setDeliveryMethod] = useState<'id' | 'email' | 'phone' | 'link' | 'platform'>('id');
-  const [recipientValue, setRecipientValue] = useState('519284710');
-  const [giftNote, setGiftNote] = useState('كل عام وأنت بألف خير يا بطل! 🎮 هدية خاصة من طارق ستور.');
+  const [recipientValue, setRecipientValue] = useState('');
+  const [giftNote, setGiftNote] = useState('');
   const [senderName, setSenderName] = useState('صديقك المخلص');
 
   const methods = [

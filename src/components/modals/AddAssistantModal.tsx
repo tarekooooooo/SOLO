@@ -105,7 +105,7 @@ export const AddAssistantModal: React.FC<AddAssistantModalProps> = ({ isOpen, on
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="assistant@tarekstor.com"
+                  placeholder="assistant@example.com"
                   className="w-full pl-3 pr-9 py-2 bg-slate-900 border border-slate-800 rounded-lg text-white focus:outline-none focus:border-cyan-500 font-mono"
                 />
                 <Mail className="w-4 h-4 text-slate-500 absolute right-3 top-2.5" />

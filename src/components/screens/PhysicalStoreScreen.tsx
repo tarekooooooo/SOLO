@@ -32,7 +32,6 @@ export const PhysicalStoreScreen: React.FC = () => {
   const { 
     physicalProducts, 
     formatPrice, 
-    apiConfig, 
     setIsApiModalOpen,
     storefrontMode,
     setStorefrontMode,
@@ -92,6 +91,7 @@ export const PhysicalStoreScreen: React.FC = () => {
         </div>
 
         {/* API Settings Quick Access */}
+        {import.meta.env.DEV && (
         <button
           onClick={() => setIsApiModalOpen(true)}
           className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-cyan-400 border border-cyan-500/30 text-xs font-bold flex items-center gap-2 transition-colors shrink-0"
@@ -100,6 +100,7 @@ export const PhysicalStoreScreen: React.FC = () => {
           <Key className="w-3.5 h-3.5" />
           <span className="hidden sm:inline">مفاتيح الربط والـ API</span>
         </button>
+        )}
       </div>
 
       {/* Hero Banner for Physical Gaming Hardware */}
@@ -111,30 +112,30 @@ export const PhysicalStoreScreen: React.FC = () => {
           <div className="space-y-3 max-w-xl text-right">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-xs font-semibold">
               <Truck className="w-3.5 h-3.5" />
-              <span>شحن دولي مباشر ومضمون من مستودعات CJ Dropshipping</span>
+              <span>تكامل CJ Dropshipping قيد التهيئة</span>
             </div>
             <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight leading-snug">
-              عتاد وإكسسوارات الألعاب الاحترافية <br />
+              المنتجات المادية في SOLO <br />
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-400">
-                تسليم إلى باب منزلك مع أرقام تتبع فورية
+                لن تُعرض قبل التحقق من السعر والشحن
               </span>
             </h1>
             <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-              اختر أفضل الملحقات المختبرة للاعبين: كيبوردات ميكانيكية، سماعات محيطية 7.1، ماوسات فائقة الخفة، وإضاءات RGB. نربط طلبك مباشرة مع مزود الدروب شيبينج العالمي CJ لتوصيل سريع للسعودية والخليج.
+              لا يوجد كتالوج CJ موثّق متصل حاليًا. لن نعرض مخزونًا أو تكاليف شحن تقديرية على أنها فعلية، والشراء المادي متوقف.
             </p>
 
             <div className="flex flex-wrap items-center gap-4 pt-2 text-xs text-slate-300">
               <div className="flex items-center gap-1.5">
                 <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                <span>ضمان استبدال وسرعة تسليم</span>
+                <span>الشراء غير مفعّل</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <Truck className="w-4 h-4 text-cyan-400" />
-                <span>شحن جوي سريع (4 - 7 أيام)</span>
+                <span>رسوم الشحن غير متاحة</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <Cpu className="w-4 h-4 text-indigo-400" />
-                <span>مزامنة بوليصات الشحن آلياً</span>
+                <span>التتبع غير متصل</span>
               </div>
             </div>
           </div>
@@ -143,39 +144,31 @@ export const PhysicalStoreScreen: React.FC = () => {
           <div className="w-full md:w-72 p-4 rounded-2xl bg-black/40 backdrop-blur-md border border-cyan-500/30 text-right space-y-3 shrink-0">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-200">حالة ربط CJ Dropshipping:</span>
-              <span className={`w-2.5 h-2.5 rounded-full ${apiConfig.cjConnected ? 'bg-emerald-400 shadow-[0_0_8px_#10b981]' : 'bg-amber-400'}`} />
+              <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
             </div>
 
             <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800 text-[11px] space-y-1 font-mono">
-              <div className="text-slate-400 flex justify-between">
-                <span>Account:</span>
-                <span className="text-white truncate max-w-[140px]">{apiConfig.cjAccountEmail}</span>
-              </div>
-              <div className="text-slate-400 flex justify-between">
-                <span>Store ID:</span>
-                <span className="text-cyan-400">{apiConfig.cjAppId}</span>
-              </div>
-              <div className="text-slate-400 flex justify-between">
-                <span>Markup:</span>
-                <span className="text-emerald-400">+{apiConfig.defaultMarkupPercent}% أرباح</span>
-              </div>
+              <p className="text-amber-200">لم يتم إجراء فحص حي من حساب مسؤول بعد.</p>
+              <p className="text-slate-400">رموز الوصول تبقى في أسرار Supabase فقط.</p>
             </div>
 
             <div className="flex flex-col gap-2">
+              {import.meta.env.DEV && <>
               <button
                 onClick={() => setIsApiModalOpen(true)}
                 className="w-full py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-bold transition-all shadow-md flex items-center justify-center gap-1.5"
               >
                 <Zap className="w-3.5 h-3.5" />
-                <span>فحص المفتاح وتجربة شراء طلب CJ</span>
+                <span>فحص اتصال CJ (قراءة فقط)</span>
               </button>
               <button
                 onClick={() => setIsApiModalOpen(true)}
                 className="w-full py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800 text-[11px] transition-colors flex items-center justify-center gap-1.5"
               >
                 <Key className="w-3 h-3 text-cyan-400" />
-                <span>تعديل مفاتيح الربط والـ API</span>
+                <span>إعدادات الربط (للمسؤول)</span>
               </button>
+              </>}
             </div>
           </div>
         </div>
@@ -197,7 +190,7 @@ export const PhysicalStoreScreen: React.FC = () => {
           </div>
 
           <div className="text-xs text-slate-400 shrink-0 font-medium">
-            عرض <strong className="text-cyan-400 font-bold">{filteredProducts.length}</strong> منتج مادي متاح للشحن
+            {filteredProducts.length ? <><strong className="text-cyan-400 font-bold">{filteredProducts.length}</strong> نتيجة غير قابلة للشراء في وضع المعاينة</> : 'لا توجد منتجات مادية موثقة'}
           </div>
         </div>
 
@@ -295,6 +288,11 @@ export const PhysicalStoreScreen: React.FC = () => {
             </div>
           </div>
         ))}
+        {filteredProducts.length === 0 && (
+          <div role="status" className="sm:col-span-2 lg:col-span-3 rounded-2xl border border-slate-800 bg-slate-900/70 p-6 text-center text-sm text-slate-300">
+            سيظهر كتالوج CJ بعد ربطه والتحقق من الأسعار والتوفر والشحن. لا تُدخل عنوان شحن ولا تُجرِ تحويلًا الآن.
+          </div>
+        )}
       </div>
 
       {/* Modal instance */}

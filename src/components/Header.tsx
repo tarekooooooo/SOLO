@@ -177,6 +177,7 @@ export const Header: React.FC = () => {
         {/* Zone 3: 1 primary action & utility controls */}
         <div className="flex items-center gap-2 shrink-0">
           {/* زر مفاتيح الربط والـ API */}
+          {import.meta.env.DEV && (
           <button
             onClick={() => setIsApiModalOpen(true)}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-900 border border-cyan-500/30 text-cyan-400 hover:bg-slate-800 text-xs font-bold transition-all shadow-sm"
@@ -185,6 +186,7 @@ export const Header: React.FC = () => {
             <Key className="w-3.5 h-3.5" />
             <span className="hidden xl:inline">مفاتيح الـ API</span>
           </button>
+          )}
 
           {/* زر تسجيل الدخول والحساب (Auth Screen) */}
           <button

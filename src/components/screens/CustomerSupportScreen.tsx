@@ -37,8 +37,8 @@ export const CustomerSupportScreen: React.FC = () => {
   // New ticket state
   const [newSubject, setNewSubject] = useState('');
   const [newMessage, setNewMessage] = useState('');
-  const [newCustName, setNewCustName] = useState('طارق الأحمد');
-  const [newCustEmail, setNewCustEmail] = useState('tarekai042@gmail.com');
+  const [newCustName, setNewCustName] = useState('');
+  const [newCustEmail, setNewCustEmail] = useState('');
   const [relatedOrderId, setRelatedOrderId] = useState('');
 
   const currentTicket = supportTickets.find((t) => t.id === selectedTicketId) || supportTickets[0];
@@ -48,7 +48,7 @@ export const CustomerSupportScreen: React.FC = () => {
     if (!replyText.trim() || !currentTicket) return;
 
     const isAdminOrAssistant = userRole === 'admin' || userRole === 'merchant';
-    const senderName = isAdminOrAssistant ? 'فريق خدمة عملاء طارق ستور' : currentTicket.customerName;
+    const senderName = isAdminOrAssistant ? 'فريق SOLO' : currentTicket.customerName;
 
     sendTicketReply(currentTicket.id, replyText, senderName, isAdminOrAssistant);
     setReplyText('');
@@ -82,23 +82,23 @@ export const CustomerSupportScreen: React.FC = () => {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-lg font-black text-white">مركز خدمة العملاء والدعم الفني المباشر</h2>
-              <span className="px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-300 border border-cyan-800 text-[11px] font-bold">
-                24/7 LIVE SUPPORT
+              <h2 className="text-lg font-black text-white">مركز مساعدة SOLO — قيد الإعداد</h2>
+              <span className="px-2 py-0.5 rounded-full bg-amber-950 text-amber-300 border border-amber-800 text-[11px] font-bold">
+                غير متصل
               </span>
             </div>
             <p className="text-xs text-slate-400">
-              حل استفسارات شحن الألعاب، أكواد البطاقات الرقمية ومتابعة طلبات العملاء فوراً
+              نظام التذاكر غير موصول بالخادم. لا ترسل بيانات شخصية هنا؛ لن يتم حفظ أي طلب دعم.
             </p>
           </div>
         </div>
 
         <button
-          onClick={() => setShowNewTicketForm(!showNewTicketForm)}
-          className="px-4 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-md shadow-cyan-600/20 transition-all self-start sm:self-auto"
+          disabled
+          className="px-4 py-2.5 rounded-xl bg-slate-800 text-slate-500 font-bold text-xs flex items-center gap-1.5 cursor-not-allowed self-start sm:self-auto"
         >
           <Plus className="w-4 h-4" />
-          <span>{showNewTicketForm ? 'عرض التذاكر' : 'فتح تذكرة دعم جديدة'}</span>
+          <span>فتح تذكرة — غير متاح</span>
         </button>
       </div>
 
@@ -110,7 +110,7 @@ export const CustomerSupportScreen: React.FC = () => {
               <MessageSquare className="w-4 h-4 text-cyan-400" />
               إنشاء تذكرة دعم واستفسار جديدة
             </h3>
-            <span className="text-[11px] text-slate-400">سيتم الرد من قِبل المشرفين خلال دقائق</span>
+            <span className="text-[11px] text-amber-300">لن تُرسل التذكرة حتى ربط نظام الدعم بالخادم</span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

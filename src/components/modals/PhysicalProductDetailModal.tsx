@@ -57,12 +57,12 @@ export const PhysicalProductDetailModal: React.FC<PhysicalProductDetailModalProp
 
   // Shipping form state
   const [selectedCountry, setSelectedCountry] = useState(ARAB_COUNTRIES[0]);
-  const [fullName, setFullName] = useState(currentUser?.name || 'طارق الأحمد');
-  const [phone, setPhone] = useState(currentUser?.phone || '+966551234888');
-  const [city, setCity] = useState('الرياض');
-  const [district, setDistrict] = useState('حي الملقا');
-  const [streetAddress, setStreetAddress] = useState('طريق أنس بن مالك، مبنى 22');
-  const [postalCode, setPostalCode] = useState('13524');
+  const [fullName, setFullName] = useState(currentUser?.name || '');
+  const [phone, setPhone] = useState(currentUser?.phone || '');
+  const [city, setCity] = useState('');
+  const [district, setDistrict] = useState('');
+  const [streetAddress, setStreetAddress] = useState('');
+  const [postalCode, setPostalCode] = useState('');
   const [notes, setNotes] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('libyana');
   const [paymentReference, setPaymentReference] = useState('');
