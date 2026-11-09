@@ -16,7 +16,8 @@ import {
   Truck,
   Zap,
   Key,
-  LogIn
+  LogIn,
+  Mail
 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { CurrencyCode, ScreenId } from '../types';
@@ -176,6 +177,20 @@ export const Header: React.FC = () => {
 
         {/* Zone 3: 1 primary action & utility controls */}
         <div className="flex items-center gap-2 shrink-0">
+          {/* بريد المتجر Gmail */}
+          <button
+            onClick={() => setActiveScreen('gmail')}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border text-xs font-bold transition-all ${
+              activeScreen === 'gmail'
+                ? 'bg-red-500/20 text-red-300 border-red-500/50 shadow-[0_0_12px_rgba(239,68,68,0.25)]'
+                : 'bg-slate-900 border-slate-800 text-slate-300 hover:border-red-500/30 hover:text-red-300'
+            }`}
+            title="بريد Gmail ومراسلات العملاء"
+          >
+            <Mail className="w-3.5 h-3.5 text-red-400" />
+            <span className="hidden md:inline">Gmail</span>
+          </button>
+
           {/* زر مفاتيح الربط والـ API */}
           {import.meta.env.DEV && (
           <button

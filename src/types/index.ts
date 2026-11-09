@@ -14,7 +14,8 @@ export type ScreenId =
   | 'admin'
   | 'support'
   | 'security'
-  | 'overview';
+  | 'overview'
+  | 'gmail';
 
 export type UserRole = 'customer' | 'merchant' | 'admin';
 export type StorefrontMode = 'digital' | 'physical';
