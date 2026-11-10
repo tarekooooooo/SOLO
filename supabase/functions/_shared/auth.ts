@@ -47,8 +47,12 @@ export async function requireAdmin(req: Request): Promise<AdminAuthResult> {
     };
   }
 
-  const { data: isAdmin, error: roleError } = await client.rpc('is_admin');
-  if (roleError || isAdmin !== true) {
+  const { data: profile, error: roleError } = await client
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .maybeSingle();
+  if (roleError || profile?.role !== 'admin') {
     return {
       ok: false,
       response: new Response(JSON.stringify({ error: 'هذه العملية متاحة لمدير موثّق فقط.' }), {

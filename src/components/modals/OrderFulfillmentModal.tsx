@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   X, 
   CheckCircle, 
@@ -24,25 +24,46 @@ export const OrderFulfillmentModal: React.FC = () => {
     selectedOrderForFulfillment, 
     setSelectedOrderForFulfillment,
     formatPrice,
-    showToast
+    showToast,
+    fulfillPaidOrder
   } = useStore();
 
-  const activeStep = 1;
   const [copiedCode, setCopiedCode] = useState(false);
+  const [fulfillmentNotes, setFulfillmentNotes] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    setCopiedCode(false);
+    setFulfillmentNotes('');
+    setIsSubmitting(false);
+  }, [selectedOrderForFulfillment?.id]);
 
   if (!selectedOrderForFulfillment) return null;
 
   const order = selectedOrderForFulfillment;
   const isDirectRecharge = order.deliveryType === 'direct_id_recharge';
-  const handleSimulateApiRecharge = () => {
-    showToast('المحاكاة والشحن المباشر متوقفان؛ لم يتم الاتصال بمزود أو شحن الحساب.');
+  const isInstantCode = order.deliveryType === 'instant_code';
+  const activeStep = order.status === 'completed' ? 3 : order.status === 'processing' ? 2 : 1;
+  const handleFulfill = async () => {
+    if (order.status !== 'processing') {
+      showToast('لا يمكن التنفيذ قبل أن يسجل الخادم تأكيد الدفع.');
+      return;
+    }
+    if (!isInstantCode && fulfillmentNotes.trim().length < 3) {
+      showToast('أدخل ملاحظة موجزة تؤكد تنفيذ الخدمة خارج النظام.');
+      return;
+    }
+    setIsSubmitting(true);
+    const succeeded = await fulfillPaidOrder(order.id, fulfillmentNotes.trim() || undefined);
+    setIsSubmitting(false);
+    if (succeeded) setSelectedOrderForFulfillment(null);
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
       <div className="relative w-full max-w-2xl bg-[#0f172a] border border-cyan-500/30 rounded-2xl shadow-2xl flex flex-col overflow-hidden text-slate-100">
         <div role="status" className="mx-4 mt-4 rounded-xl border border-amber-500/40 bg-amber-950/30 px-3 py-2 text-xs leading-relaxed text-amber-200">
-          نافذة تجهيز المعاينة فقط. الشحن المباشر وتسليم الأكواد والإلغاء/الاسترداد غير موصولة بقاعدة البيانات، فلا تعتمد الأزرار كتنفيذ فعلي.
+          لا ينفّذ الخادم الطلب إلا بعد تأكيد الدفع. أكواد المنتجات تُسحب من الحجز الخاص، أما الشحن والخدمات اليدوية فتحتاج ملاحظة تؤكد إتمامها خارج النظام.
         </div>
         
         {/* Header */}
@@ -182,52 +203,53 @@ export const OrderFulfillmentModal: React.FC = () => {
           </div>
 
           {/* Fulfillment Execution Box */}
-          {isDirectRecharge ? (
-            /* Direct Game ID Recharge Workflow */
-            <div className="p-4 rounded-xl bg-slate-900 border border-cyan-500/20 space-y-4">
-              <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-bold text-slate-200 flex items-center gap-2">
-                    <ShieldCheck className="w-4 h-4 text-cyan-400" />
-                  شحن حساب اللاعب:
-                  </h4>
-                <span className="text-[11px] text-slate-400 font-mono">غير مهيأ</span>
-              </div>
+          <div className="p-4 rounded-xl bg-slate-900 border border-cyan-500/20 space-y-4">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold text-slate-200 flex items-center gap-2">
+                {isInstantCode ? <Key className="w-4 h-4 text-cyan-400" /> : <ShieldCheck className="w-4 h-4 text-cyan-400" />}
+                {isInstantCode ? 'تسليم الأكواد الرقمية المحجوزة:' : isDirectRecharge ? 'تأكيد شحن حساب اللاعب:' : 'تأكيد تنفيذ الخدمة:'}
+              </h4>
+              <span className="text-[11px] text-slate-400 font-mono">{order.status === 'processing' ? 'الدفع مؤكّد' : order.status === 'completed' ? 'مكتمل' : 'بانتظار دفع مؤكّد'}</span>
+            </div>
 
-              {/* Automated Option */}
-              <div className="p-3.5 rounded-lg bg-cyan-950/30 border border-cyan-800/40 space-y-2">
-                <div className="flex items-center justify-between">
-                  <div className="text-xs">
-                    <span className="font-bold text-white block">الشحن المباشر غير متاح</span>
-                  <span className="text-slate-400 text-[11px]">خدمة الشحن المباشر غير مهيأة أو موصولة بمزود فعلي.</span>
-                  </div>
-                  <button
-                    onClick={handleSimulateApiRecharge}
-                    disabled
-                    className="px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 bg-slate-700 text-slate-400 cursor-not-allowed"
-                  >
-                    <AlertCircle className="w-3.5 h-3.5" />
-                    غير متاح
-                  </button>
+            {isInstantCode ? (
+              order.status === 'completed' && order.assignedCode ? (
+                <div className="p-3 rounded-lg bg-emerald-950/30 border border-emerald-800/50 space-y-2">
+                  <div className="text-xs font-semibold text-emerald-200">تم تسليم الكود إلى الطلب:</div>
+                  <pre className="whitespace-pre-wrap break-all rounded bg-slate-950 p-3 text-sm font-mono text-white">{order.assignedCode}</pre>
                 </div>
+              ) : (
+                <div className="p-3 rounded-lg bg-cyan-950/30 border border-cyan-800/40 text-xs text-cyan-100">
+                  {order.status === 'processing'
+                    ? 'سيستخرج الخادم الأكواد المحجوزة لهذه الباقة ويضعها في سجل الطلب عند التأكيد.'
+                    : 'لا تُسلّم الأكواد قبل أن تصبح حالة الطلب «قيد المعالجة» بعد تأكيد الدفع.'}
+                </div>
+              )
+            ) : (
+              <div className="space-y-3">
+                <div className="p-3 rounded-lg bg-amber-950/30 border border-amber-800/40 text-xs text-amber-100">
+                  {isDirectRecharge
+                    ? 'لا يوجد مزود شحن مباشر متصل؛ نفّذ الشحن لدى المورد بنفسك ثم سجّل رقم العملية أو إثبات التنفيذ هنا.'
+                    : 'نفّذ الخدمة خارج النظام أولًا ثم سجّل مرجع التنفيذ أو ملاحظة موجزة هنا.'}
+                </div>
+                {order.status !== 'completed' && (
+                  <textarea
+                    rows={3}
+                    maxLength={1000}
+                    value={fulfillmentNotes}
+                    onChange={(event) => setFulfillmentNotes(event.target.value)}
+                    placeholder="مرجع التنفيذ أو ملاحظة تؤكد إتمام الخدمة (مطلوب)"
+                    className="w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-white"
+                  />
+                )}
+                {order.fulfillmentNotes && <p className="text-[11px] text-slate-400">ملاحظة التنفيذ: {order.fulfillmentNotes}</p>}
               </div>
+            )}
 
-              <div className="text-xs text-amber-200">لا توجد خدمة شحن موصولة؛ لم يتم إرسال عملية.</div>
-            </div>
-          ) : (
-            /* Digital Code Pool Fulfillment */
-            <div className="p-4 rounded-xl bg-slate-900 border border-cyan-500/20 space-y-4">
-              <div className="flex items-center justify-between">
-                <h4 className="text-xs font-bold text-slate-200 flex items-center gap-2">
-                  <Key className="w-4 h-4 text-cyan-400" />
-                  تسليم الأكواد الرقمية:
-                </h4>
-                <span className="text-[11px] text-amber-300 font-mono">غير مهيأ</span>
-              </div>
-              <div className="p-3 rounded-lg bg-amber-950/30 border border-amber-800/40 text-xs text-amber-200">
-                لا يوجد مخزون أكواد آمن مرتبط بالخادم. لا تُعرض أكواد المعاينة ولا يمكن تسليمها.
-              </div>
-            </div>
-          )}
+            {order.status !== 'processing' && order.status !== 'completed' && (
+              <div className="text-xs text-rose-200">الطلب غير قابل للتنفيذ حاليًا؛ لن يتغير أي شيء حتى يؤكد الخادم الدفع.</div>
+            )}
+          </div>
 
         </div>
 
@@ -249,23 +271,14 @@ export const OrderFulfillmentModal: React.FC = () => {
               إغلاق
             </button>
 
-            {isDirectRecharge ? (
-              <button
-                disabled
-                className="px-5 py-2 text-xs font-bold text-slate-400 bg-slate-700 rounded-lg flex items-center gap-1.5 cursor-not-allowed"
-              >
-                <CheckCircle className="w-4 h-4" />
-                تأكيد اكتمال الشحن وتسليم الطلب
-              </button>
-            ) : (
-              <button
-                disabled
-                className="px-5 py-2 text-xs font-bold text-slate-400 bg-slate-700 rounded-lg flex items-center gap-1.5 cursor-not-allowed"
-              >
-                <Send className="w-4 h-4" />
-                التسليم غير مفعّل
-              </button>
-            )}
+            <button
+              onClick={handleFulfill}
+              disabled={isSubmitting || order.status !== 'processing' || (!isInstantCode && fulfillmentNotes.trim().length < 3)}
+              className="px-5 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-400 rounded-lg flex items-center gap-1.5 disabled:cursor-not-allowed"
+            >
+              <CheckCircle className="w-4 h-4" />
+              {isSubmitting ? 'جارٍ التنفيذ…' : isInstantCode ? 'تسليم الأكواد وإكمال الطلب' : 'تأكيد التنفيذ وإكمال الطلب'}
+            </button>
           </div>
         </div>
 

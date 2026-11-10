@@ -48,7 +48,6 @@ export const AdminFulfillmentScreen: React.FC = () => {
     updatePhysicalOrderStatus,
     syncWithCJ,
     setSelectedOrderForFulfillment, 
-    startProcessingOrder, 
     formatPrice, 
     assistants,
     updateAssistant,
@@ -86,11 +85,6 @@ export const AdminFulfillmentScreen: React.FC = () => {
   const completedCount = orders.filter((o) => o.status === 'completed').length;
   const openTicketsCount = supportTickets.filter((t) => t.status === 'open' || t.status === 'in_progress').length;
 
-  const handleStartProcessing = (order: Order, e: React.MouseEvent) => {
-    e.stopPropagation();
-    startProcessingOrder(order.id);
-  };
-
   const handleOpenFulfillment = (order: Order) => {
     setSelectedOrderForFulfillment(order);
   };
@@ -106,7 +100,7 @@ export const AdminFulfillmentScreen: React.FC = () => {
   return (
     <div className="space-y-6 pb-12">
       <div role="status" className="rounded-xl border border-amber-500/40 bg-amber-950/30 px-4 py-3 text-xs leading-relaxed text-amber-200">
-        اعتمادات الدفع اليدوي تتحقق من سجل الطلب فقط. الموافقة لا ترسل كودًا رقميًا ولا تنشئ شحنة CJ تلقائيًا؛ تحقّق من التحويل خارج النظام قبل أي اعتماد.
+        تحقّق من التحويل خارج النظام قبل اعتماده. لا يمكن تنفيذ طلب رقمي إلا بعد تسجيل الدفع كـ«مقبوض»؛ لا توجد خدمة شحن تلقائي لمعرّفات الألعاب.
       </div>
       
       {/* Top Header matching Screen 11 in mockup */}
@@ -373,6 +367,7 @@ export const AdminFulfillmentScreen: React.FC = () => {
                 <tbody className="divide-y divide-slate-800/80">
                   {filteredOrders.map((order) => {
                     const isPending = order.status === 'pending';
+                    const isAwaitingManualReview = order.status === 'awaiting_manual_review';
                     const isProcessing = order.status === 'processing';
                     const isCompleted = order.status === 'completed';
                     const isCancelled = order.status === 'cancelled';
@@ -422,7 +417,12 @@ export const AdminFulfillmentScreen: React.FC = () => {
                         <td className="py-3.5 px-4">
                           {isPending && (
                             <span className="px-2.5 py-1 rounded-full bg-amber-950/80 text-amber-300 border border-amber-800 text-[11px] font-semibold inline-flex items-center gap-1">
-                              <Clock className="w-3 h-3" /> بانتظار البدء
+                              <Clock className="w-3 h-3" /> بانتظار تأكيد الدفع
+                            </span>
+                          )}
+                          {isAwaitingManualReview && (
+                            <span className="px-2.5 py-1 rounded-full bg-orange-950/80 text-orange-300 border border-orange-800 text-[11px] font-semibold inline-flex items-center gap-1">
+                              <Clock className="w-3 h-3" /> بانتظار مراجعة التحويل
                             </span>
                           )}
                           {isProcessing && (
@@ -444,21 +444,11 @@ export const AdminFulfillmentScreen: React.FC = () => {
 
                         <td className="py-3.5 px-4 text-left">
                           <div className="flex items-center justify-end gap-2">
-                            {isPending && (
-                              <button
-                                onClick={(e) => handleStartProcessing(order, e)}
-                                className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition-colors flex items-center gap-1 shadow-sm"
-                              >
-                                <Zap className="w-3.5 h-3.5" />
-                                <span>بدء التجهيز</span>
-                              </button>
-                            )}
-
                             <button
                               onClick={() => handleOpenFulfillment(order)}
                               className="px-3.5 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs transition-all shadow-md shadow-cyan-600/20 flex items-center gap-1"
                             >
-                              <span>{isCompleted ? 'تفاصيل التسليم' : 'معالجة وشحن'}</span>
+                              <span>{isCompleted ? 'تفاصيل التسليم' : isProcessing ? 'تنفيذ طلب مدفوع' : 'تفاصيل الطلب'}</span>
                               <ChevronRight className="w-3.5 h-3.5 rotate-180" />
                             </button>
                           </div>

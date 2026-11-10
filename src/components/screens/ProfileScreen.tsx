@@ -15,10 +15,11 @@ import {
 import { useStore } from '../../context/StoreContext';
 
 export const ProfileScreen: React.FC = () => {
-  const { playerProfile, updatePlayerProfile, showToast, setActiveScreen } = useStore();
+  const { playerProfile, updatePlayerProfile, showToast, setActiveScreen, orders, currentUser, formatPrice } = useStore();
   const [isEditing, setIsEditing] = useState(false);
   const [username, setUsername] = useState(playerProfile.username);
   const [pubgId, setPubgId] = useState(playerProfile.connectedPlatforms.pubgId || '');
+  const myOrders = orders.filter((order) => order.customerId === currentUser?.id).slice(0, 20);
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -177,6 +178,41 @@ export const ProfileScreen: React.FC = () => {
               </div>
             )) : <p className="col-span-full text-slate-400">لم تُربط ألعاب مفضلة بهذا الحساب.</p>}
           </div>
+        </div>
+
+        <div className="space-y-3 border-t border-slate-800/80 pt-5">
+          <div className="flex items-center justify-between">
+            <h4 className="text-xs font-bold text-slate-200">طلباتي وتسليماتي</h4>
+            <span className="text-[10px] text-slate-500">آخر {myOrders.length} طلبات</span>
+          </div>
+          {myOrders.length === 0 ? (
+            <p className="rounded-xl bg-slate-900/80 p-4 text-xs text-slate-400">لا توجد طلبات مرتبطة بهذا الحساب بعد.</p>
+          ) : (
+            <div className="space-y-3">
+              {myOrders.map((order) => (
+                <article key={order.id} className="rounded-xl border border-slate-800 bg-slate-900/80 p-4 space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <div className="font-mono text-xs font-bold text-cyan-300">{order.orderNumber}</div>
+                      <div className="mt-1 text-xs font-semibold text-white">{order.productName} — {order.packageName}</div>
+                    </div>
+                    <div className="text-left">
+                      <div className="text-xs font-bold text-white">{formatPrice(order.priceUSD)}</div>
+                      <div className="mt-1 text-[10px] text-slate-400">
+                        {order.status === 'completed' ? 'مكتمل' : order.status === 'processing' ? 'الدفع مؤكّد — قيد التنفيذ' : order.status === 'awaiting_manual_review' ? 'بانتظار مراجعة التحويل' : order.status === 'cancelled' ? 'ملغي' : 'بانتظار تأكيد الدفع'}
+                      </div>
+                    </div>
+                  </div>
+                  {order.status === 'completed' && order.assignedCode && (
+                    <div className="rounded-lg border border-emerald-800/60 bg-emerald-950/30 p-3">
+                      <div className="mb-2 text-[11px] font-bold text-emerald-200">كود/أكواد التسليم الخاصة بطلبك:</div>
+                      <pre className="whitespace-pre-wrap break-all font-mono text-sm text-white">{order.assignedCode}</pre>
+                    </div>
+                  )}
+                </article>
+              ))}
+            </div>
+          )}
         </div>
 
       </div>

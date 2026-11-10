@@ -70,6 +70,7 @@ const mapCatalogProduct = (row: Record<string, unknown>): Product => {
     merchantId: 'solo',
     merchantName: 'SOLO',
     inStock: Boolean(row.in_stock) && Number(row.stock_count) > 0,
+    stockCount: Number(row.stock_count) || 0,
     totalSold: Number(row.total_sold) || 0,
     createdAt: String(row.created_at ?? new Date().toISOString()),
   };
@@ -97,19 +98,20 @@ interface StoreContextType {
 
   // Products
   products: Product[];
-  addProduct: (product: Omit<Product, 'id' | 'createdAt' | 'totalSold'>) => void;
-  updateProduct: (id: string, updates: Partial<Product>) => void;
-  deleteProduct: (id: string) => void;
-  addCodesToPackage: (productId: string, packageId: string, codes: string[]) => void;
+  addProduct: (product: Omit<Product, 'id' | 'createdAt' | 'totalSold'>) => Promise<boolean>;
+  updateProduct: (id: string, updates: Partial<Product>) => Promise<boolean>;
+  deleteProduct: (id: string) => Promise<boolean>;
+  addCodesToPackage: (productId: string, packageId: string, codes: string[]) => Promise<boolean>;
 
   // Orders & Fulfillment
   orders: Order[];
   selectedOrderForFulfillment: Order | null;
   setSelectedOrderForFulfillment: (order: Order | null) => void;
   createOrder: (order: Omit<Order, 'id' | 'orderNumber' | 'date' | 'status'> & { idempotencyKey?: string }) => Promise<Order | null>;
+  fulfillPaidOrder: (orderId: string, notes?: string) => Promise<boolean>;
   startProcessingOrder: (orderId: string) => void;
-  fulfillDirectRecharge: (orderId: string, notes?: string) => void;
-  fulfillInstantCode: (orderId: string, code?: string, notes?: string) => void;
+  fulfillDirectRecharge: (orderId: string, notes?: string) => Promise<boolean>;
+  fulfillInstantCode: (orderId: string, code?: string, notes?: string) => Promise<boolean>;
   cancelOrder: (orderId: string, reason?: string) => void;
 
   // Staff & Assistants Management (تعيين المساعدين والصلاحيات)
@@ -279,22 +281,21 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     let active = true;
     const loadCatalog = async () => {
       if (!supabaseClient) return;
-      const { data, error } = await supabaseClient
-        .from('public_catalog')
-        .select('id, product_type, title, title_ar, category, platform, image_url, description, delivery_type, price_usd, in_stock, stock_count, total_sold, rating, packages, created_at')
-        .eq('product_type', 'digital')
-        .order('created_at', { ascending: false })
-        .limit(100);
-      if (error) {
-        console.warn('Could not load public catalog:', error.message);
+      const columns = 'id, product_type, title, title_ar, category, platform, image_url, description, delivery_type, price_usd, in_stock, stock_count, total_sold, rating, packages, created_at';
+      const result = currentUser?.role === 'admin'
+        ? await supabaseClient.from('products').select(columns).eq('product_type', 'digital').order('created_at', { ascending: false }).limit(100)
+        : await supabaseClient.from('public_catalog').select(columns).eq('product_type', 'digital').order('created_at', { ascending: false }).limit(100);
+      if (result.error) {
+        console.warn('Could not load product catalog:', result.error.message);
         return;
       }
-      if (!active || !Array.isArray(data) || data.length === 0) return;
-      setProducts(data.map((row) => mapCatalogProduct(row as unknown as Record<string, unknown>)));
+      if (!active || !Array.isArray(result.data)) return;
+      if (import.meta.env.DEV && result.data.length === 0) return;
+      setProducts(result.data.map((row) => mapCatalogProduct(row as unknown as Record<string, unknown>)));
     };
     void loadCatalog();
     return () => { active = false; };
-  }, []);
+  }, [currentUser?.id, currentUser?.role]);
 
   useEffect(() => {
     let active = true;
@@ -343,7 +344,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setUserRole(role);
       const { data: orderRows, error: orderError } = await supabaseClient!
         .from('orders')
-        .select('id, order_number, customer_id, customer_name, customer_email, customer_phone, total_usd, status, payment_status, payment_method, payment_reference, delivery_type, target_player_id, target_player_name, admin_review_notes, created_at, order_items(id, order_id, product_id, product_title, package_or_variant, unit_price_usd, quantity, total_price_usd, created_at)')
+        .select('id, order_number, customer_id, customer_name, customer_email, customer_phone, total_usd, status, payment_status, payment_method, payment_reference, delivery_type, target_player_id, target_player_name, admin_review_notes, fulfillment_notes, created_at, order_items(id, order_id, product_id, product_title, package_or_variant, unit_price_usd, quantity, total_price_usd, delivered_code, created_at)')
         .order('created_at', { ascending: false })
         .limit(100);
       if (active && !orderError && Array.isArray(orderRows)) {
@@ -372,7 +373,8 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             isGift: false,
             status,
             date: row.created_at,
-            fulfillmentNotes: row.admin_review_notes || undefined,
+            assignedCode: firstItem?.delivered_code || undefined,
+            fulfillmentNotes: row.fulfillment_notes || row.admin_review_notes || undefined,
             paymentMethod: row.payment_method,
             paymentReference: row.payment_reference || undefined,
           };
@@ -418,27 +420,153 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   // Products Management
-  const addProduct = (newProdData: Omit<Product, 'id' | 'createdAt' | 'totalSold'>) => {
-    void newProdData;
-    showToast('إضافة المنتجات غير موصولة بقاعدة البيانات؛ لم يتم حفظ أو نشر أي منتج.');
+  const addProduct = async (newProdData: Omit<Product, 'id' | 'createdAt' | 'totalSold'>): Promise<boolean> => {
+    if (!supabaseClient || currentUser?.role !== 'admin') {
+      showToast('إضافة المنتجات متاحة لمدير موثّق فقط؛ لم يُحفظ أي منتج.');
+      return false;
+    }
+    const titleAr = newProdData.titleAr.trim();
+    const title = newProdData.title.trim() || titleAr;
+    const imageUrl = newProdData.image.trim();
+    const packages = newProdData.packages.map((pkg) => ({
+      id: pkg.id.trim(),
+      name: pkg.name.trim(),
+      amount: Number(pkg.amount),
+      priceUSD: Number(pkg.priceUSD),
+      ...(pkg.bonus?.trim() ? { bonus: pkg.bonus.trim() } : {}),
+    }));
+    const stockCount = Math.floor(Number(newProdData.stockCount ?? 0));
+    let image: URL;
+    try {
+      image = new URL(imageUrl);
+    } catch {
+      showToast('أدخل رابط صورة صحيحًا يبدأ بـ https:// أو http://.');
+      return false;
+    }
+    if (!titleAr || !title || !['https:', 'http:'].includes(image.protocol)) {
+      showToast('اسم المنتج العربي ورابط الصورة مطلوبان.');
+      return false;
+    }
+    if (packages.length === 0 || packages.some((pkg) => !pkg.id || !pkg.name || !Number.isFinite(pkg.amount) || pkg.amount <= 0 || !Number.isFinite(pkg.priceUSD) || pkg.priceUSD <= 0)) {
+      showToast('تحقق من أسماء الباقات وكمياتها وأسعارها؛ يجب أن تكون الأسعار أكبر من صفر.');
+      return false;
+    }
+    if (!Number.isSafeInteger(stockCount) || stockCount < 0 || stockCount > 1000000) {
+      showToast('كمية المخزون يجب أن تكون عددًا صحيحًا بين صفر ومليون.');
+      return false;
+    }
+    if (newProdData.deliveryType === 'instant_code' && stockCount !== 0) {
+      showToast('لا يمكن إدخال رصيد أكواد يدويًا؛ يجب استيراد الأكواد عبر مسار المخزون الخادمي.');
+      return false;
+    }
+
+    const slugBase = title.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'product';
+    const payload = {
+      product_type: 'digital',
+      slug: `${slugBase}-${crypto.randomUUID().slice(0, 8)}`,
+      title,
+      title_ar: titleAr,
+      category: newProdData.category,
+      platform: newProdData.platform,
+      image_url: image.toString(),
+      description: newProdData.description.trim(),
+      delivery_type: newProdData.deliveryType,
+      price_usd: packages[0].priceUSD,
+      in_stock: stockCount > 0,
+      stock_count: stockCount,
+      packages,
+      rating: 5,
+      total_sold: 0,
+    };
+    const { data, error } = await supabaseClient
+      .from('products')
+      .insert(payload)
+      .select('id, product_type, title, title_ar, category, platform, image_url, description, delivery_type, price_usd, in_stock, stock_count, total_sold, rating, packages, created_at')
+      .single();
+    if (error || !data) {
+      console.error('Product creation failed:', error?.message);
+      showToast('تعذر حفظ المنتج. تحقق من صلاحية المدير والبيانات ثم أعد المحاولة.');
+      return false;
+    }
+    const savedProduct = mapCatalogProduct(data as unknown as Record<string, unknown>);
+    setProducts((previous) => [savedProduct, ...previous.filter((product) => product.id !== savedProduct.id)]);
+    showToast('تم حفظ المنتج في قاعدة البيانات. استورد المخزون وراجعه؛ الشراء ما زال مغلقًا.');
+    return true;
   };
 
-  const updateProduct = (id: string, updates: Partial<Product>) => {
-    void id;
-    void updates;
-    showToast('تعديل المنتجات غير موصول بالخادم؛ لم تُحفظ التغييرات.');
+  const updateProduct = async (id: string, updates: Partial<Product>): Promise<boolean> => {
+    if (!supabaseClient || currentUser?.role !== 'admin' || !isDatabaseUuid(id)) {
+      showToast('تعديل المنتجات يتطلب مديرًا موثّقًا ومنتجًا مسجلًا في قاعدة البيانات.');
+      return false;
+    }
+    if (typeof updates.inStock !== 'boolean') {
+      showToast('هذا التعديل غير مدعوم في الواجهة الحالية.');
+      return false;
+    }
+    if (updates.inStock) {
+      const { data: stockRow, error: stockError } = await supabaseClient
+        .from('products')
+        .select('stock_count')
+        .eq('id', id)
+        .maybeSingle();
+      if (stockError || !stockRow || Number(stockRow.stock_count) <= 0) {
+        showToast('لا يمكن إتاحة المنتج قبل تسجيل مخزون فعلي له.');
+        return false;
+      }
+    }
+    const { error } = await supabaseClient.from('products').update({ in_stock: updates.inStock }).eq('id', id);
+    if (error) {
+      console.error('Product update failed:', error.message);
+      showToast('تعذر حفظ حالة المنتج.');
+      return false;
+    }
+    setProducts((previous) => previous.map((product) => product.id === id
+      ? { ...product, inStock: updates.inStock === true }
+      : product));
+    showToast(updates.inStock ? 'تم إتاحة المنتج.' : 'تم إيقاف المنتج عن البيع.');
+    return true;
   };
 
-  const deleteProduct = (id: string) => {
-    void id;
-    showToast('حذف المنتجات غير موصول بالخادم؛ لم يُحذف أي سجل.');
+  const deleteProduct = async (id: string): Promise<boolean> => {
+    if (!supabaseClient || currentUser?.role !== 'admin' || !isDatabaseUuid(id)) {
+      showToast('إيقاف المنتجات يتطلب مديرًا موثّقًا ومنتجًا مسجلًا في قاعدة البيانات.');
+      return false;
+    }
+    const { error } = await supabaseClient.from('products').update({ in_stock: false }).eq('id', id);
+    if (error) {
+      console.error('Product disable failed:', error.message);
+      showToast('تعذر إيقاف المنتج.');
+      return false;
+    }
+    setProducts((previous) => previous.map((product) => product.id === id ? { ...product, inStock: false } : product));
+    showToast('تم إيقاف المنتج مع الاحتفاظ بسجلاته التاريخية.');
+    return true;
   };
 
-  const addCodesToPackage = (productId: string, packageId: string, newCodes: string[]) => {
-    void productId;
-    void packageId;
-    void newCodes;
-    showToast('رفع الأكواد من المتصفح غير آمن ولم يُحفظ. يلزم رفعها عبر وظيفة خادم إلى مخزون خاص.');
+  const addCodesToPackage = async (productId: string, packageId: string, newCodes: string[]): Promise<boolean> => {
+    if (!supabaseClient || currentUser?.role !== 'admin' || !isDatabaseUuid(productId)) {
+      showToast('استيراد الأكواد متاح لمدير موثّق ومنتج مسجل في قاعدة البيانات فقط.');
+      return false;
+    }
+    const codes = newCodes.map((code) => code.trim());
+    if (codes.length < 1 || codes.length > 500 || codes.some((code) => !code || code.length > 200) || new Set(codes).size !== codes.length) {
+      showToast('أدخل من 1 إلى 500 كود صالح وفريد في كل دفعة.');
+      return false;
+    }
+    const { data, error } = await supabaseClient.functions.invoke('inventory-import', {
+      body: { productId, packageId, codes },
+    });
+    if (error || data?.success !== true) {
+      console.error('Secure inventory import failed.');
+      showToast(data?.error || 'تعذر استيراد الأكواد؛ لم يتم تأكيد أي تغيير.');
+      return false;
+    }
+    const availableCount = Math.max(0, Number(data.available_count) || 0);
+    setProducts((previous) => previous.map((product) => product.id === productId
+      ? { ...product, stockCount: availableCount, inStock: product.inStock && availableCount > 0 }
+      : product));
+    showToast(`تم استيراد ${Number(data.inserted_count) || 0} كود إلى المخزون الخاص. يلزم مراجعة المنتج قبل إتاحته للبيع.`);
+    return true;
   };
 
   // Orders are created by the authenticated server function; no local order is a purchase.
@@ -543,18 +671,44 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     showToast('لا يمكن تغيير حالة الطلب من المتصفح؛ استخدم إجراء الخادم بعد التحقق من الدفع.');
   };
 
-  const fulfillDirectRecharge = (orderId: string, notes?: string) => {
-    void orderId;
-    void notes;
-    showToast('الشحن المباشر غير مربوط بخدمة مورد موثوقة؛ لم يتم تنفيذ الشحن أو إكمال الطلب.');
+  const fulfillPaidOrder = async (orderId: string, notes?: string): Promise<boolean> => {
+    if (!supabaseClient || currentUser?.role !== 'admin' || !isDatabaseUuid(orderId)) {
+      showToast('تنفيذ الطلب يتطلب جلسة مدير موثّقة وطلبًا مسجلًا في قاعدة البيانات.');
+      return false;
+    }
+    const { data, error } = await supabaseClient.functions.invoke('fulfill-order', {
+      body: { orderId, notes: notes?.trim() || null },
+    });
+    if (error || data?.success !== true) {
+      console.error('Paid order fulfillment failed.');
+      showToast(data?.error || 'تعذر تنفيذ الطلب؛ تأكد من حالة الدفع والمخزون.');
+      return false;
+    }
+
+    let assignedCode = orders.find((order) => order.id === orderId)?.assignedCode;
+    const { data: deliveryRows } = await supabaseClient
+      .from('order_items')
+      .select('delivered_code')
+      .eq('order_id', orderId)
+      .order('created_at', { ascending: true });
+    if (Array.isArray(deliveryRows)) {
+      assignedCode = deliveryRows.map((row) => row.delivered_code).filter(Boolean).join('\n') || assignedCode;
+    }
+    const updatedNotes = notes?.trim() || undefined;
+    const updateOrder = (order: Order): Order => order.id === orderId
+      ? { ...order, status: 'completed', assignedCode, fulfillmentNotes: updatedNotes || order.fulfillmentNotes }
+      : order;
+    setOrders((previous) => previous.map(updateOrder));
+    setSelectedOrderForFulfillment((previous) => previous ? updateOrder(previous) : null);
+    showToast(data.already_completed ? 'الطلب مكتمل بالفعل.' : 'اكتمل تنفيذ الطلب المدفوع.');
+    return true;
   };
 
-  const fulfillInstantCode = (orderId: string, customCode?: string, notes?: string) => {
-    void orderId;
-    void customCode;
-    void notes;
-    showToast('تسليم الأكواد غير مفعّل حتى يُربط مخزون الخادم والبريد؛ لم يتم إنشاء أو إرسال كود.');
-  };
+  const fulfillDirectRecharge = (orderId: string, notes?: string): Promise<boolean> =>
+    fulfillPaidOrder(orderId, notes);
+
+  const fulfillInstantCode = (orderId: string, _code?: string, notes?: string): Promise<boolean> =>
+    fulfillPaidOrder(orderId, notes);
 
   const cancelOrder = (orderId: string, reason?: string) => {
     void orderId;
@@ -882,6 +1036,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         selectedOrderForFulfillment,
         setSelectedOrderForFulfillment,
         createOrder,
+        fulfillPaidOrder,
         startProcessingOrder,
         fulfillDirectRecharge,
         fulfillInstantCode,

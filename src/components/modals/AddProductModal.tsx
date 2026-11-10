@@ -9,13 +9,16 @@ interface AddProductModalProps {
 }
 
 export const AddProductModal: React.FC<AddProductModalProps> = ({ isOpen, onClose }) => {
-  const { showToast } = useStore();
+  const { addProduct, showToast } = useStore();
 
   const [title, setTitle] = useState('');
   const [titleAr, setTitleAr] = useState('');
   const [category, setCategory] = useState<ProductCategory>('game_currency');
   const [platform, setPlatform] = useState<'pubg' | 'steam' | 'playstation' | 'xbox' | 'freefire' | 'roblox' | 'other'>('pubg');
   const [description, setDescription] = useState('');
+  const [imageUrl, setImageUrl] = useState('');
+  const [stockCount, setStockCount] = useState(0);
+  const [isSaving, setIsSaving] = useState(false);
   const [deliveryType, setDeliveryType] = useState<'instant_code' | 'direct_id_recharge' | 'manual_service'>('direct_id_recharge');
 
   const [packages, setPackages] = useState<ProductPackage[]>([
@@ -44,9 +47,46 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ isOpen, onClos
     );
   };
 
-  const handleSaveProduct = (e: React.FormEvent) => {
+  const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
-    showToast('إضافة المنتجات غير موصولة بقاعدة البيانات؛ لم يُحفظ أو يُنشر أي منتج.');
+    if (isSaving) return;
+    if (!titleAr.trim() || !imageUrl.trim()) {
+      showToast('أدخل الاسم العربي ورابط صورة المنتج.');
+      return;
+    }
+    if (packages.some((pkg) => !pkg.name.trim() || !Number.isFinite(pkg.amount) || pkg.amount <= 0 || !Number.isFinite(pkg.priceUSD) || pkg.priceUSD <= 0)) {
+      showToast('تحقق من أسماء الباقات وكمياتها وأسعارها؛ يجب أن تكون الأسعار أكبر من صفر.');
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const availableStock = deliveryType === 'instant_code' ? 0 : Math.max(0, Math.floor(stockCount));
+      const saved = await addProduct({
+        title: title.trim() || titleAr.trim(),
+        titleAr: titleAr.trim(),
+        category,
+        platform,
+        image: imageUrl.trim(),
+        description: description.trim(),
+        rating: 5,
+        deliveryType,
+        packages,
+        merchantId: 'solo',
+        merchantName: 'SOLO',
+        inStock: availableStock > 0,
+        stockCount: availableStock,
+      });
+      if (saved) {
+        setTitle('');
+        setTitleAr('');
+        setDescription('');
+        setImageUrl('');
+        setStockCount(0);
+        onClose();
+      }
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -73,7 +113,7 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ isOpen, onClos
         </div>
 
         <div role="status" className="mx-6 mt-4 rounded-lg border border-amber-500/40 bg-amber-950/30 px-3 py-2 text-xs text-amber-200">
-          هذه واجهة معاينة فقط. لا تدخل أكوادًا حقيقية؛ حفظ المنتجات والمخزون غير مفعّل.
+          احفظ المنتج أولًا، ثم استورد أكواده من بنك الأكواد الخاص. لا يُفتح الشراء حتى اختبار الدفع ومراجعة المخزون.
         </div>
 
         {/* Form Body */}
@@ -159,6 +199,37 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ isOpen, onClos
               placeholder="اكتب وصفاً مفصلاً لطريقة الاستخدام أو الشحن..."
               className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-xs text-slate-100 focus:outline-none focus:border-cyan-500"
             />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-semibold text-slate-300 block mb-1.5">رابط صورة المنتج *</label>
+              <input
+                type="url"
+                required
+                value={imageUrl}
+                onChange={(e) => setImageUrl(e.target.value)}
+                placeholder="https://example.com/product-image.jpg"
+                className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-xs text-slate-100 focus:outline-none focus:border-cyan-500"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-slate-300 block mb-1.5">المخزون المتاح *</label>
+              <input
+                type="number"
+                min="0"
+                max="1000000"
+                step="1"
+                required
+                disabled={deliveryType === 'instant_code'}
+                value={deliveryType === 'instant_code' ? 0 : stockCount}
+                onChange={(e) => setStockCount(Number(e.target.value) || 0)}
+                className="w-full px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-xs text-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed"
+              />
+              <p className="mt-1 text-[10px] text-slate-400">
+                {deliveryType === 'instant_code' ? 'يُحسب المخزون بعد استيراد الأكواد من بنك الأكواد الخاص.' : 'لا تضع كمية إلا إذا كانت لديك قدرة فعلية على تنفيذها.'}
+              </p>
+            </div>
           </div>
 
           {/* Packages & Pricing List */}
@@ -254,10 +325,10 @@ export const AddProductModal: React.FC<AddProductModalProps> = ({ isOpen, onClos
             </button>
             <button
               type="submit"
-              disabled
-              className="px-5 py-2 text-xs font-bold text-slate-400 bg-slate-700 rounded-lg cursor-not-allowed"
+              disabled={isSaving}
+              className="px-5 py-2 text-xs font-bold text-white bg-cyan-600 hover:bg-cyan-500 rounded-lg disabled:opacity-50 disabled:cursor-wait"
             >
-              الحفظ والنشر غير مفعّلين
+              {isSaving ? 'جارٍ الحفظ...' : 'حفظ المنتج'}
             </button>
           </div>
 

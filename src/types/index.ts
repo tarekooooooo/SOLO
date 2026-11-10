@@ -120,6 +120,7 @@ export interface Product {
   merchantId: string;
   merchantName: string;
   inStock: boolean;
+  stockCount?: number;
   totalSold: number;
   createdAt: string;
 }

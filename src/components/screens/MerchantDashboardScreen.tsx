@@ -47,11 +47,15 @@ export const MerchantDashboardScreen: React.FC = () => {
   const totalSalesCount = completedOrders.length;
 
   const handleOpenCodeBank = (prod: Product) => {
-    void prod;
-    showToast('مخزون الأكواد غير موصول بخدمة خادم آمنة. لا تدخل أكوادًا هنا؛ لم يُفتح بنك الأكواد.');
+    if (prod.deliveryType !== 'instant_code') {
+      showToast('بنك الأكواد مخصص للمنتجات التي نوع تسليمها كود فوري.');
+      return;
+    }
+    setSelectedProductForCodes(prod);
+    setSelectedPkgId(prod.packages[0]?.id || '');
   };
 
-  const handleSaveCodes = (e: React.FormEvent) => {
+  const handleSaveCodes = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedProductForCodes || !selectedPkgId) return;
 
@@ -65,14 +69,22 @@ export const MerchantDashboardScreen: React.FC = () => {
       return;
     }
 
-    addCodesToPackage(selectedProductForCodes.id, selectedPkgId, parsedCodes);
-    setSelectedProductForCodes(null);
+    if (parsedCodes.length > 500) {
+      showToast('الحد الأقصى 500 كود في كل دفعة.');
+      return;
+    }
+
+    const saved = await addCodesToPackage(selectedProductForCodes.id, selectedPkgId, parsedCodes);
+    if (saved) {
+      setNewCodesText('');
+      setSelectedProductForCodes(null);
+    }
   };
 
   return (
     <div className="space-y-6 pb-12">
       <div role="status" className="rounded-xl border border-amber-500/40 bg-amber-950/30 px-4 py-3 text-xs leading-relaxed text-amber-200">
-        وضع الإدارة غير مكتمل: تغييرات المنتجات والمخزون والموظفين لا تُحفظ في قاعدة البيانات. لا ترفع أكوادًا سرية من المتصفح.
+        تُحفظ بيانات المنتج؛ تُرسل الأكواد إلى مسار خادمي خاص. التسليم والدفع ما زالا مغلقين، فلا تعتبر المنتج جاهزًا للبيع.
       </div>
       
       {/* Top Header matching Screen 10 in mockup */}
@@ -192,7 +204,7 @@ export const MerchantDashboardScreen: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-sm font-bold text-white">إدارة المنتجات والباقات الرقمية</h3>
-              <p className="text-xs text-slate-400">تحكم بحالة التوفر، تعديل الأسعار، وإضافة الأكواد إلى المخزن</p>
+              <p className="text-xs text-slate-400">إدارة الإتاحة واستيراد الأكواد إلى مخزون خاص؛ التسليم لم يُفعّل بعد</p>
             </div>
             <button
               onClick={() => setIsAddModalOpen(true)}
@@ -225,11 +237,13 @@ export const MerchantDashboardScreen: React.FC = () => {
                             {prod.platform.toUpperCase()}
                           </span>
                         </div>
-                        <p className="text-xs text-slate-400 mt-0.5">
-                          {prod.deliveryType === 'direct_id_recharge'
-                            ? 'شحن مباشر بمعرف اللاعب (Player ID)'
-                            : 'كود تفعيل رقمي — المخزون الخادمي غير مهيأ'}
-                        </p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {prod.deliveryType === 'direct_id_recharge'
+                    ? 'شحن مباشر بمعرف اللاعب (Player ID)'
+                    : prod.deliveryType === 'instant_code'
+                      ? `كود تفعيل رقمي — المتاح المسجل: ${prod.stockCount ?? 0}`
+                      : 'خدمة يدوية — تحقق من قدرتك الفعلية على التنفيذ'}
+                </p>
                       </div>
                     </div>
 
@@ -255,12 +269,12 @@ export const MerchantDashboardScreen: React.FC = () => {
 
                       <button
                         onClick={() => {
-                          if (confirm(`هل أنت متأكد من حذف المنتج "${prod.titleAr}"؟`)) {
-                            deleteProduct(prod.id);
-                          }
+                        if (confirm(`هل تريد إيقاف المنتج "${prod.titleAr}" عن البيع؟ سيبقى سجل المنتج محفوظًا.`)) {
+                          deleteProduct(prod.id);
+                        }
                         }}
                         className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-slate-800"
-                        title="حذف المنتج"
+                        title="إيقاف المنتج"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -348,7 +362,7 @@ export const MerchantDashboardScreen: React.FC = () => {
                 >
                   {selectedProductForCodes.packages.map((pkg) => (
                     <option key={pkg.id} value={pkg.id}>
-                      {pkg.name} ({formatPrice(pkg.priceUSD)}) - متوفر حالياً: {pkg.availableCodes?.length || 0} كود
+                      {pkg.name} ({formatPrice(pkg.priceUSD)})
                     </option>
                   ))}
                 </select>
@@ -363,7 +377,7 @@ export const MerchantDashboardScreen: React.FC = () => {
                   required
                   value={newCodesText}
                   onChange={(e) => setNewCodesText(e.target.value)}
-                  placeholder="STM-1102-9938-QWER&#10;STM-4491-0021-MMZA"
+                  placeholder="أدخل حتى 500 كود، كل كود في سطر مستقل"
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-white font-mono"
                 />
               </div>
@@ -380,7 +394,7 @@ export const MerchantDashboardScreen: React.FC = () => {
                   type="submit"
                   className="px-5 py-2 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-lg shadow-md"
                 >
-                  حفظ في المخزن
+                  استيراد إلى المخزون الخاص
                 </button>
               </div>
             </form>
