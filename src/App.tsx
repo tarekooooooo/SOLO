@@ -50,11 +50,23 @@ const MainLayout: React.FC = () => {
     setIsApiModalOpen,
     currentUser,
     userRole,
-    isAuthLoading
+    isAuthLoading,
+    checkoutEnabled,
+    atlosEnabled,
+    products
   } = useStore();
 
   const renderActiveScreenContent = () => {
-    const productionSafeScreens = ['splash', 'login', 'auth', 'physical_store', 'home', 'product'];
+    const productionSafeScreens = ['splash', 'login', 'auth', 'home', 'product', 'admin', 'merchant'];
+    if (!import.meta.env.DEV && activeScreen === 'physical_store') {
+      return (
+        <div role="status" className="max-w-2xl mx-auto my-12 rounded-3xl border border-slate-800 bg-[#0f1523] p-8 text-center space-y-3">
+          <h2 className="text-xl font-black text-white">منتجات CJ المادية خارج الإطلاق الحالي</h2>
+          <p className="text-sm leading-relaxed text-slate-300">الإطلاق الأول مخصص للمنتجات الرقمية فقط. لن نعرض أو نقبل طلبات مادية قبل تجهيز التكامل ومراجعته.</p>
+          <button onClick={() => setActiveScreen('home')} className="px-5 py-2.5 rounded-xl bg-cyan-600 text-white font-bold text-sm">العودة إلى المتجر الرقمي</button>
+        </div>
+      );
+    }
     if (!import.meta.env.DEV && !productionSafeScreens.includes(activeScreen)) {
       return (
         <div role="status" className="max-w-2xl mx-auto my-12 rounded-3xl border border-slate-800 bg-[#0f1523] p-8 text-center space-y-3">
@@ -69,7 +81,7 @@ const MainLayout: React.FC = () => {
     if (activeScreen === 'admin' && (!currentUser || userRole !== 'admin')) {
       return <AuthScreen />;
     }
-    if (activeScreen === 'merchant' && (!currentUser || (userRole !== 'merchant' && userRole !== 'admin'))) {
+    if (activeScreen === 'merchant' && (!currentUser || userRole !== 'admin')) {
       return <AuthScreen />;
     }
     switch (activeScreen) {
@@ -82,7 +94,7 @@ const MainLayout: React.FC = () => {
       case 'physical_store':
         return <PhysicalStoreScreen />;
       case 'home':
-        return storefrontMode === 'physical' ? <PhysicalStoreScreen /> : <HomeScreen />;
+        return import.meta.env.DEV && storefrontMode === 'physical' ? <PhysicalStoreScreen /> : <HomeScreen />;
       case 'product':
         return <ProductDetailScreen />;
       case 'gift':
@@ -114,8 +126,12 @@ const MainLayout: React.FC = () => {
       {/* Top Bar following Top Bar Contract */}
       <Header />
 
-      <div role="status" className="border-b border-amber-500/30 bg-amber-950/40 px-4 py-2 text-center text-xs leading-relaxed text-amber-200">
-        SOLO في وضع المعاينة والإعداد. لا توجد معاملات أو عمليات تسليم مفعّلة؛ لا ترسل أي دفعة حتى إعلان جاهزية المتجر.
+      <div role="status" className={`border-b px-4 py-2 text-center text-xs leading-relaxed ${atlosEnabled ? 'border-emerald-500/30 bg-emerald-950/40 text-emerald-200' : 'border-amber-500/30 bg-amber-950/40 text-amber-200'}`}>
+        {atlosEnabled
+          ? 'الدفع عبر ATLOS متاح. يؤكد الخادم حالة الدفع؛ وبعد التأكيد يراجع فريق المتجر تسليم المنتج الرقمي.'
+          : checkoutEnabled
+            ? 'إعداد الدفع غير مكتمل؛ لا يتم إنشاء طلب أو فتح نافذة دفع حاليًا.'
+            : 'المتجر في وضع المعاينة. الشراء متوقف حتى اكتمال المراجعة والتفعيل النهائي؛ لا تحوّل أموالاً.'}
       </div>
 
       {/* Floating Notification Toast */}
@@ -128,8 +144,8 @@ const MainLayout: React.FC = () => {
         </div>
       )}
 
-      {/* 12-Screens Quick Workflow Bar (Desktop mode) */}
-      <div className="bg-[#0e1320] border-b border-slate-800/80 py-2.5 px-4 sm:px-6">
+      {/* Development-only mockup navigation */}
+      {import.meta.env.DEV && <div className="bg-[#0e1320] border-b border-slate-800/80 py-2.5 px-4 sm:px-6">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3 text-xs">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
@@ -176,11 +192,11 @@ const MainLayout: React.FC = () => {
             <span>عرض الصورة الأصلية (12 شاشة)</span>
           </button>
         </div>
-      </div>
+      </div>}
 
       {/* Main Content Viewport */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6">
-        {viewMode === 'mobile_simulator' ? (
+        {import.meta.env.DEV && viewMode === 'mobile_simulator' ? (
           <MobileFrame>
             {renderActiveScreenContent()}
           </MobileFrame>
@@ -216,13 +232,13 @@ const MainLayout: React.FC = () => {
             <div className="p-3 rounded-2xl bg-slate-900/60 border border-slate-800/80">
               <PackageCheck className="w-5 h-5 text-emerald-400 mx-auto mb-1.5" />
               <span className="font-bold text-white block">الكتالوج</span>
-              <span className="text-[10px] text-slate-500">قيد التجهيز</span>
+              <span className="text-[10px] text-slate-500">{products.length > 0 ? 'متصل بكتالوج المتجر' : 'لا توجد منتجات منشورة'}</span>
             </div>
 
             <div className="p-3 rounded-2xl bg-slate-900/60 border border-slate-800/80">
               <Zap className="w-5 h-5 text-cyan-400 mx-auto mb-1.5" />
               <span className="font-bold text-white block">التسليم</span>
-              <span className="text-[10px] text-slate-500">غير مفعّل</span>
+              <span className="text-[10px] text-slate-500">{atlosEnabled ? 'مراجعة إدارية بعد التأكيد' : 'مغلق مع الدفع'}</span>
             </div>
 
             <div className="p-3 rounded-2xl bg-slate-900/60 border border-slate-800/80">
@@ -234,13 +250,13 @@ const MainLayout: React.FC = () => {
             <div className="p-3 rounded-2xl bg-slate-900/60 border border-slate-800/80">
               <ShieldCheck className="w-5 h-5 text-teal-400 mx-auto mb-1.5" />
               <span className="font-bold text-white block">إدارة المخزون</span>
-              <span className="text-[10px] text-slate-500">قيد الربط</span>
+              <span className="text-[10px] text-slate-500">{products.some((product) => product.inStock) ? 'مخزون رقمي متوفر' : 'لا توجد باقات متاحة'}</span>
             </div>
 
             <div className="p-3 rounded-2xl bg-slate-900/60 border border-slate-800/80">
               <Zap className="w-5 h-5 text-amber-400 mx-auto mb-1.5" />
               <span className="font-bold text-white block">الدفع</span>
-              <span className="text-[10px] text-slate-500">غير متاح حاليًا</span>
+              <span className="text-[10px] text-slate-500">{atlosEnabled ? 'ATLOS متاحة' : 'مغلق حتى المراجعة'}</span>
             </div>
           </div>
 
@@ -249,10 +265,10 @@ const MainLayout: React.FC = () => {
             <div className="flex items-center gap-3">
               <span className="text-white font-extrabold tracking-wider">SOLO</span>
               <span>•</span>
-              <span>المتجر والخدمات قيد الإعداد</span>
+              <span>متجر SOLO الرقمي</span>
             </div>
             <div>
-              نسخة معاينة من متجر SOLO؛ لا يُقبل الدفع ولا يُنفذ التسليم حاليًا © 2026
+              {atlosEnabled ? 'تأكيد الدفع من الخادم؛ التسليم يُكمله فريق المتجر بعد المراجعة.' : 'نسخة معاينة؛ لا يُقبل الدفع أو يُنشأ طلب قبل التفعيل النهائي.'} © 2026
             </div>
           </div>
 
