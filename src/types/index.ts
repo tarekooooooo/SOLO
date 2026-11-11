@@ -103,11 +103,13 @@ export interface ProductPackage {
   amount: number;
   priceUSD: number;
   bonus?: string;
+  deliveryTypes?: Array<'instant_code' | 'direct_id_recharge'>;
   availableCodes?: string[];
 }
 
 export interface Product {
   id: string;
+  slug?: string;
   title: string;
   titleAr: string;
   category: ProductCategory;

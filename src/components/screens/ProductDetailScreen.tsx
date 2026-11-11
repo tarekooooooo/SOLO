@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { 
   ArrowRight, 
   ShieldCheck, 
@@ -22,6 +22,22 @@ import { useStore } from '../../context/StoreContext';
 import { Order, Product, ProductPackage, PaymentMethod } from '../../types';
 import { SUPABASE_URL } from '../../config/api';
 import { loadAtlosWidget } from '../../lib/atlosWidget';
+import { isDatabaseUuid, supabaseClient } from '../../lib/supabase';
+
+type DigitalDeliveryType = 'instant_code' | 'direct_id_recharge';
+
+function getPackageDeliveryTypes(pkg: ProductPackage, fallback?: Product['deliveryType']): DigitalDeliveryType[] {
+  const declaredTypes = pkg.deliveryTypes?.filter((type): type is DigitalDeliveryType =>
+    type === 'instant_code' || type === 'direct_id_recharge'
+  );
+  if (declaredTypes?.length) return declaredTypes;
+  return fallback === 'instant_code' || fallback === 'direct_id_recharge' ? [fallback] : [];
+}
+
+const deliveryLabels: Record<DigitalDeliveryType, string> = {
+  instant_code: 'استلام الكود',
+  direct_id_recharge: 'شحن فوري لحسابي',
+};
 
 function getAtlosIdempotencyKey(userId: string, scope: string): string {
   const storageKey = `solo_atlos_idempotency:${encodeURIComponent(userId)}:${encodeURIComponent(scope)}`;
@@ -62,30 +78,101 @@ export const ProductDetailScreen: React.FC = () => {
     createOrder,
   } = useStore();
 
-  const product: Product | undefined = products.find((p: Product) => p.id === selectedProductId) || products[0];
+  const product: Product | undefined = products.find((p: Product) => p.id === selectedProductId)
+    || products.find((p: Product) => p.slug === 'pubg-mobile-global-uc')
+    || products[0];
   const [selectedPackageId, setSelectedPackageId] = useState<string | null>(null);
+  const [packageAvailability, setPackageAvailability] = useState<Record<string, number> | null>(null);
+  const [availabilityError, setAvailabilityError] = useState(false);
+  const [selectedDeliveryType, setSelectedDeliveryType] = useState<DigitalDeliveryType | null>(null);
   const selectedPackage = product?.packages.find((pkg: ProductPackage) => pkg.id === selectedPackageId) || product?.packages[0];
+  const deliveryOptions = selectedPackage ? getPackageDeliveryTypes(selectedPackage, product?.deliveryType) : [];
+  const effectiveDeliveryType = selectedDeliveryType && deliveryOptions.includes(selectedDeliveryType)
+    ? selectedDeliveryType
+    : deliveryOptions[0] || null;
   const [playerId, setPlayerId] = useState('');
-  const [playerName, setPlayerName] = useState('');
-  const [isVerifyingId, setIsVerifyingId] = useState(false);
-  const [idVerified, setIdVerified] = useState(false);
   const [isStartingAtlos, setIsStartingAtlos] = useState(false);
   const [atlosOrder, setAtlosOrder] = useState<Order | null>(null);
   const [atlosPaymentSubmitted, setAtlosPaymentSubmitted] = useState(false);
   const atlosIdempotencyRef = useRef<{ scope: string; key: string } | null>(null);
 
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('libyana');
-  const isDirectRecharge = product?.deliveryType === 'direct_id_recharge';
+  const isDirectRecharge = effectiveDeliveryType === 'direct_id_recharge';
   const isManualPayment = ['libyana', 'almadar', 'bank_transfer', 'payoneer'].includes(paymentMethod);
+  const availablePackageCount = product?.packages.filter((pkg) => (packageAvailability?.[pkg.id] ?? 0) > 0).length ?? 0;
+  const selectedPackageAvailable = Boolean(selectedPackage && (packageAvailability?.[selectedPackage.id] ?? 0) > 0);
+  const invalidPlayerId = isDirectRecharge && (playerId.trim().length < 3 || playerId.trim().length > 64);
+  const buyDisabled = !checkoutEnabled || !atlosEnabled || paymentMethod !== 'atlos_crypto' || isStartingAtlos
+    || atlosPaymentSubmitted || !selectedPackageAvailable || !effectiveDeliveryType || invalidPlayerId;
 
-  const handleVerifyPlayerId = () => {
-    if (!playerId) return;
-    setIsVerifyingId(false);
-    setIdVerified(false);
-    showToast('التحقق المباشر من معرف اللاعب غير مربوط بمزوّد اللعبة؛ لم يتم تأكيد الحساب.');
-  };
+  useEffect(() => {
+    let active = true;
+    setPackageAvailability(null);
+    setAvailabilityError(false);
+    if (!product) return () => { active = false; };
+    if (!supabaseClient || !isDatabaseUuid(product.id)) {
+      setAvailabilityError(true);
+      setPackageAvailability({});
+      return () => { active = false; };
+    }
+
+    void (async () => {
+      try {
+        const { data, error } = await supabaseClient.rpc('get_package_availability', { p_product_id: product.id });
+        if (!active) return;
+        if (error || !Array.isArray(data)) {
+          setAvailabilityError(true);
+          setPackageAvailability({});
+          return;
+        }
+        const nextAvailability: Record<string, number> = {};
+        for (const row of data) {
+          if (!row || typeof row.package_id !== 'string') continue;
+          const count = Number(row.available);
+          nextAvailability[row.package_id] = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
+        }
+        setPackageAvailability(nextAvailability);
+      } catch {
+        if (!active) return;
+        setAvailabilityError(true);
+        setPackageAvailability({});
+      }
+    })();
+
+    return () => { active = false; };
+  }, [product?.id]);
+
+  useEffect(() => {
+    if (!product || packageAvailability === null) return;
+    const currentPackage = product.packages.find((pkg) => pkg.id === selectedPackageId);
+    if (currentPackage && (packageAvailability[currentPackage.id] ?? 0) > 0) return;
+    const firstAvailable = product.packages.find((pkg) => (packageAvailability[pkg.id] ?? 0) > 0);
+    setSelectedPackageId(firstAvailable?.id ?? product.packages[0]?.id ?? null);
+  }, [product?.id, packageAvailability, selectedPackageId]);
+
+  useEffect(() => {
+    if (!selectedPackage) {
+      setSelectedDeliveryType(null);
+      return;
+    }
+    const nextOptions = getPackageDeliveryTypes(selectedPackage, product?.deliveryType);
+    setSelectedDeliveryType((current) => current && nextOptions.includes(current) ? current : nextOptions[0] ?? null);
+  }, [product?.id, selectedPackage?.id]);
 
   const handleBuyNow = async () => {
+    if (!selectedPackage || packageAvailability === null || (packageAvailability[selectedPackage.id] ?? 0) < 1) {
+      showToast('هذه الباقة غير متاحة حاليًا؛ لم يتم إنشاء طلب.');
+      return;
+    }
+    if (!effectiveDeliveryType) {
+      showToast('اختر طريقة الاستلام المتاحة لهذه الباقة.');
+      return;
+    }
+    const normalizedPlayerId = playerId.trim();
+    if (effectiveDeliveryType === 'direct_id_recharge' && (normalizedPlayerId.length < 3 || normalizedPlayerId.length > 64)) {
+      showToast('معرّف اللاعب (ID) مطلوب للشحن المباشر ويجب أن يكون بين 3 و64 محرفًا.');
+      return;
+    }
     if (!checkoutEnabled) {
       showToast('الشراء متوقف حاليًا. لن يتم إنشاء طلب أو فتح بوابة الدفع.');
       return;
@@ -104,14 +191,10 @@ export const ProductDetailScreen: React.FC = () => {
       return;
     }
     const merchantId = atlosMerchantId;
-    if (isDirectRecharge) {
-      showToast('الشحن المباشر غير متاح حتى يكتمل التحقق من اللاعب والتسليم الآمن.');
-      return;
-    }
     if (atlosPaymentSubmitted || isStartingAtlos) return;
 
-    const scope = `${currentUser.id}:${product.id}:${selectedPackage.id}`;
-    const idempotencyKey = getAtlosIdempotencyKey(currentUser.id, `${product.id}:${selectedPackage.id}`);
+    const scope = `${currentUser.id}:${product.id}:${selectedPackage.id}:${effectiveDeliveryType}`;
+    const idempotencyKey = getAtlosIdempotencyKey(currentUser.id, `${product.id}:${selectedPackage.id}:${effectiveDeliveryType}`);
     if (atlosIdempotencyRef.current?.scope !== scope || atlosIdempotencyRef.current.key !== idempotencyKey) {
       atlosIdempotencyRef.current = { scope, key: idempotencyKey };
       setAtlosOrder(null);
@@ -121,7 +204,9 @@ export const ProductDetailScreen: React.FC = () => {
     setIsStartingAtlos(true);
     try {
       const widget = await loadAtlosWidget();
-      let order = atlosOrder?.productId === product.id && atlosOrder.packageId === selectedPackage.id
+      let order = atlosOrder?.productId === product.id
+        && atlosOrder.packageId === selectedPackage.id
+        && atlosOrder.deliveryType === effectiveDeliveryType
         ? atlosOrder
         : null;
 
@@ -137,9 +222,9 @@ export const ProductDetailScreen: React.FC = () => {
           packageName: selectedPackage.name,
           platform: product.platform,
           priceUSD: selectedPackage.priceUSD,
-          deliveryType: product.deliveryType,
-          targetPlayerId: playerId.trim() || undefined,
-          targetPlayerName: playerName.trim() || undefined,
+          deliveryType: effectiveDeliveryType,
+          targetPlayerId: isDirectRecharge ? normalizedPlayerId : undefined,
+          targetPlayerName: undefined,
           isGift: false,
           paymentMethod: 'atlos_crypto',
           idempotencyKey,
@@ -231,7 +316,7 @@ export const ProductDetailScreen: React.FC = () => {
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-[11px] text-cyan-300 bg-cyan-950/60 px-2 py-0.5 rounded-md border border-cyan-800/60">
-                  {product.packages.length} باقات متوفرة
+                  {availablePackageCount} باقات متوفرة
                 </span>
               </div>
               <h2 className="text-xl sm:text-2xl font-black text-white">{product.titleAr}</h2>
@@ -265,15 +350,25 @@ export const ProductDetailScreen: React.FC = () => {
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {product.packages.map((pkg: ProductPackage) => {
                 const isSelected = selectedPackage.id === pkg.id;
+                const availableCount = packageAvailability?.[pkg.id] ?? 0;
+                const isPackageAvailable = packageAvailability !== null && availableCount > 0;
                 return (
                   <button
                     key={pkg.id}
-                    onClick={() => setSelectedPackageId(pkg.id)}
+                    type="button"
+                    onClick={() => {
+                      setSelectedPackageId(pkg.id);
+                      setSelectedDeliveryType(getPackageDeliveryTypes(pkg, product.deliveryType)[0] ?? null);
+                      setAtlosOrder(null);
+                      setAtlosPaymentSubmitted(false);
+                    }}
+                    disabled={!isPackageAvailable}
+                    aria-pressed={isSelected}
                     className={`relative p-3.5 rounded-2xl border text-right transition-all flex flex-col justify-between ${
                       isSelected
                         ? 'border-cyan-400 bg-cyan-950/40 shadow-lg shadow-cyan-500/20'
                         : 'border-slate-800 bg-slate-900/70 hover:border-slate-700 hover:bg-slate-800/70'
-                    }`}
+                    } ${!isPackageAvailable ? 'opacity-50 cursor-not-allowed' : ''}`}
                   >
                     {pkg.bonus && (
                       <span className="absolute -top-2 left-2 text-[10px] font-bold px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 text-black">
@@ -283,6 +378,9 @@ export const ProductDetailScreen: React.FC = () => {
                     <div>
                       <span className="text-xs font-bold text-white block mb-1">
                         {pkg.name}
+                      </span>
+                      <span className={`text-[10px] ${isPackageAvailable ? 'text-emerald-400' : 'text-slate-500'}`}>
+                        {packageAvailability === null ? 'جارٍ فحص التوفر…' : isPackageAvailable ? `متاح: ${availableCount}` : 'غير متاح'}
                       </span>
                     </div>
 
@@ -300,7 +398,35 @@ export const ProductDetailScreen: React.FC = () => {
                 );
               })}
             </div>
+            {availabilityError && (
+              <p role="alert" className="text-[11px] text-rose-300">تعذر التحقق من توفر الباقات؛ أوقفنا الاختيار احتياطيًا.</p>
+            )}
+            {packageAvailability !== null && availablePackageCount === 0 && !availabilityError && (
+              <p role="status" className="text-[11px] text-amber-300">لا توجد باقات متاحة حاليًا.</p>
+            )}
           </div>
+
+          {/* Delivery choice comes from the selected package metadata. */}
+          {deliveryOptions.length > 0 && (
+            <fieldset className="space-y-3">
+              <legend className="text-xs font-bold text-slate-200">طريقة الاستلام:</legend>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {deliveryOptions.map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => setSelectedDeliveryType(type)}
+                    aria-pressed={effectiveDeliveryType === type}
+                    className={`rounded-xl border px-4 py-3 text-right text-xs font-bold transition-colors ${effectiveDeliveryType === type
+                      ? 'border-cyan-400 bg-cyan-950/40 text-cyan-200'
+                      : 'border-slate-800 bg-slate-900/70 text-slate-300 hover:border-slate-600'}`}
+                  >
+                    {deliveryLabels[type]}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+          )}
 
           {/* Player ID Input (Direct recharge requirement) */}
           {isDirectRecharge && (
@@ -308,7 +434,7 @@ export const ProductDetailScreen: React.FC = () => {
               <div className="flex items-center justify-between">
                 <label className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
                   <User className="w-4 h-4 text-cyan-400" />
-                  <span>معرّف اللاعب (Player ID) المطلوب شحنه:</span>
+                  <span>معرّف اللاعب (ID) المطلوب شحنه — إلزامي:</span>
                 </label>
                 <span className="text-[10px] text-emerald-400 flex items-center gap-1">
                   <ShieldCheck className="w-3.5 h-3.5" /> لا نطلب كلمة المرور أبداً
@@ -318,31 +444,17 @@ export const ProductDetailScreen: React.FC = () => {
               <div className="flex gap-2">
                 <input
                   type="text"
+                  required
+                  minLength={3}
+                  maxLength={64}
                   value={playerId}
-                  onChange={(e) => {
-                    setPlayerId(e.target.value);
-                    setIdVerified(false);
-                  }}
-                  placeholder="أدخل معرّف اللاعب (Player ID)"
+                  onChange={(e) => setPlayerId(e.target.value)}
+                  placeholder="أدخل ID اللاعب (3 إلى 64 محرفًا)"
                   className="flex-1 px-3 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-xs font-mono text-cyan-300 focus:outline-none focus:border-cyan-500"
                 />
-                <button
-                  type="button"
-                  onClick={handleVerifyPlayerId}
-                  disabled={isVerifyingId}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-xl border border-slate-700 transition-colors"
-                >
-                  {isVerifyingId ? 'جاري التحقق...' : 'تحقق من الآيدي'}
-                </button>
               </div>
-
-              {idVerified && (
-                <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-emerald-950/40 border border-emerald-800/40 text-xs text-emerald-300">
-                  <span>اسم اللاعب في اللعبة: <strong>{playerName}</strong></span>
-                  <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-400">
-                    <Check className="w-3.5 h-3.5" /> حساب موثق جاهز للشحن
-                  </span>
-                </div>
+              {invalidPlayerId && playerId.length > 0 && (
+                <p className="text-[11px] text-rose-300">يجب أن يكون ID اللاعب بين 3 و64 محرفًا.</p>
               )}
             </div>
           )}
@@ -500,8 +612,8 @@ export const ProductDetailScreen: React.FC = () => {
               <button
                 type="button"
                 onClick={handleBuyNow}
-                disabled={!atlosEnabled || paymentMethod !== 'atlos_crypto' || isStartingAtlos || atlosPaymentSubmitted}
-                className={`flex-1 sm:flex-none px-7 py-3 rounded-xl bg-slate-700 text-slate-300 text-xs sm:text-sm font-bold flex items-center justify-center gap-2 ${!atlosEnabled || paymentMethod !== 'atlos_crypto' || isStartingAtlos || atlosPaymentSubmitted ? 'opacity-60 cursor-not-allowed' : 'hover:bg-cyan-800'}`}
+                disabled={buyDisabled}
+                className={`flex-1 sm:flex-none px-7 py-3 rounded-xl bg-slate-700 text-slate-300 text-xs sm:text-sm font-bold flex items-center justify-center gap-2 ${buyDisabled ? 'opacity-60 cursor-not-allowed' : 'hover:bg-cyan-800'}`}
               >
                 <Zap className="w-4 h-4" />
                 <span>{isStartingAtlos ? 'جارٍ فتح ATLOS...' : atlosPaymentSubmitted ? 'بانتظار تأكيد الخادم' : atlosEnabled && paymentMethod === 'atlos_crypto' ? 'الدفع عبر ATLOS' : 'الشراء غير متاح مؤقتًا'}</span>

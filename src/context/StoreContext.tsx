@@ -36,11 +36,15 @@ const mapCatalogProduct = (row: Record<string, unknown>): Product => {
     const rawPrice = item.priceUSD ?? item.price_usd ?? item.price;
     const priceUSD = Number(rawPrice);
     if (!Number.isFinite(priceUSD) || priceUSD < 0) return [];
+    const deliveryTypes = Array.isArray(item.delivery_types)
+      ? item.delivery_types.filter((type): type is 'instant_code' | 'direct_id_recharge' => type === 'instant_code' || type === 'direct_id_recharge')
+      : [];
     return [{
       id: String(item.id ?? item.package_id ?? `package-${index + 1}`),
       name: String(item.name ?? item.title ?? `خيار ${index + 1}`),
       amount: Number(item.amount ?? 1) || 1,
       priceUSD,
+      ...(deliveryTypes.length ? { deliveryTypes } : {}),
     }];
   });
   const basePrice = Number(row.price_usd);
@@ -58,6 +62,7 @@ const mapCatalogProduct = (row: Record<string, unknown>): Product => {
   const validDeliveryTypes: Product['deliveryType'][] = ['instant_code', 'direct_id_recharge', 'manual_service'];
   return {
     id: String(row.id),
+    slug: String(row.slug ?? ''),
     title,
     titleAr: String(row.title_ar ?? title),
     category: validCategories.includes(category) ? category : 'games',
@@ -281,7 +286,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     let active = true;
     const loadCatalog = async () => {
       if (!supabaseClient) return;
-      const columns = 'id, product_type, title, title_ar, category, platform, image_url, description, delivery_type, price_usd, in_stock, stock_count, total_sold, rating, packages, created_at';
+      const columns = 'id, product_type, slug, title, title_ar, category, platform, image_url, description, delivery_type, price_usd, in_stock, stock_count, total_sold, rating, packages, created_at';
       const result = currentUser?.role === 'admin'
         ? await supabaseClient.from('products').select(columns).eq('product_type', 'digital').order('created_at', { ascending: false }).limit(100)
         : await supabaseClient.from('public_catalog').select(columns).eq('product_type', 'digital').order('created_at', { ascending: false }).limit(100);
@@ -344,10 +349,33 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setUserRole(role);
       const { data: orderRows, error: orderError } = await supabaseClient!
         .from('orders')
-        .select('id, order_number, customer_id, customer_name, customer_email, customer_phone, total_usd, status, payment_status, payment_method, payment_reference, delivery_type, target_player_id, target_player_name, admin_review_notes, fulfillment_notes, created_at, order_items(id, order_id, product_id, product_title, package_or_variant, unit_price_usd, quantity, total_price_usd, delivered_code, created_at)')
+        .select('id, order_number, customer_id, customer_name, customer_email, customer_phone, total_usd, status, payment_status, payment_method, payment_reference, delivery_type, target_player_id, target_player_name, admin_review_notes, fulfillment_notes, created_at, order_items(id, order_id, product_id, product_title, package_or_variant, unit_price_usd, quantity, total_price_usd, created_at)')
         .order('created_at', { ascending: false })
         .limit(100);
       if (active && !orderError && Array.isArray(orderRows)) {
+        const completedInstantOrderIds = orderRows
+          .filter((row: any) => row.delivery_type === 'instant_code' && row.status === 'completed')
+          .map((row: any) => String(row.id));
+        const completedCodesByOrder = new Map<string, string[]>();
+        if (completedInstantOrderIds.length > 0) {
+          const { data: codeRows, error: codeError } = await supabaseClient!
+            .from('order_items')
+            .select('order_id, delivered_code')
+            .in('order_id', completedInstantOrderIds)
+            .not('delivered_code', 'is', null)
+            .limit(1000);
+          if (codeError) {
+            console.warn('Could not load completed instant codes:', codeError.message);
+          } else if (Array.isArray(codeRows)) {
+            for (const codeRow of codeRows) {
+              if (typeof codeRow.order_id !== 'string' || typeof codeRow.delivered_code !== 'string') continue;
+              const orderCodes = completedCodesByOrder.get(codeRow.order_id) || [];
+              orderCodes.push(codeRow.delivered_code);
+              completedCodesByOrder.set(codeRow.order_id, orderCodes);
+            }
+          }
+        }
+        if (!active) return;
         const mappedOrders: Order[] = orderRows.map((row: any) => {
           const firstItem = Array.isArray(row.order_items) ? row.order_items[0] : null;
           const allowedStatuses: OrderStatus[] = ['pending', 'awaiting_manual_review', 'processing', 'ready_to_deliver', 'completed', 'cancelled'];
@@ -373,7 +401,9 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             isGift: false,
             status,
             date: row.created_at,
-            assignedCode: firstItem?.delivered_code || undefined,
+            assignedCode: deliveryType === 'instant_code' && status === 'completed'
+              ? completedCodesByOrder.get(row.id)?.join('\n') || undefined
+              : undefined,
             fulfillmentNotes: row.fulfillment_notes || row.admin_review_notes || undefined,
             paymentMethod: row.payment_method,
             paymentReference: row.payment_reference || undefined,
@@ -481,7 +511,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const { data, error } = await supabaseClient
       .from('products')
       .insert(payload)
-      .select('id, product_type, title, title_ar, category, platform, image_url, description, delivery_type, price_usd, in_stock, stock_count, total_sold, rating, packages, created_at')
+      .select('id, product_type, slug, title, title_ar, category, platform, image_url, description, delivery_type, price_usd, in_stock, stock_count, total_sold, rating, packages, created_at')
       .single();
     if (error || !data) {
       console.error('Product creation failed:', error?.message);
@@ -617,27 +647,27 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return null;
     }
 
-    const { data, error } = await supabaseClient.functions.invoke('create-order', {
-      body: {
-        idempotencyKey: orderData.idempotencyKey || crypto.randomUUID(),
-        customerName: orderData.customerName,
-        customerPhone: orderData.customerPhone || null,
-        deliveryType: orderData.deliveryType,
-        paymentMethod,
-        paymentReference: paymentMethod === 'atlos_crypto' ? null : orderData.paymentReference!.trim(),
-        targetPlayerId: orderData.targetPlayerId || null,
-        targetPlayerName: orderData.targetPlayerName || null,
-        items: [{
-          productId: orderData.productId,
-          quantity: 1,
-          packageOrVariant: orderData.packageId || null,
-        }],
-      },
+    const { data, error } = await supabaseClient.rpc('create_order_atomic', {
+      p_idempotency_key: orderData.idempotencyKey || crypto.randomUUID(),
+      p_customer_name: orderData.customerName,
+      p_customer_phone: orderData.customerPhone || null,
+      p_delivery_type: orderData.deliveryType,
+      p_payment_method: paymentMethod,
+      p_payment_reference: paymentMethod === 'atlos_crypto' ? null : orderData.paymentReference!.trim(),
+      p_payment_receipt_url: null,
+      p_target_player_id: orderData.deliveryType === 'direct_id_recharge' ? orderData.targetPlayerId?.trim() || null : null,
+      p_target_player_name: orderData.deliveryType === 'direct_id_recharge' ? orderData.targetPlayerName?.trim() || null : null,
+      p_shipping_address: null,
+      p_items: [{
+        product_id: orderData.productId,
+        package_or_variant: orderData.packageId || null,
+        quantity: 1,
+      }],
     });
 
     if (error || !data?.success) {
-      console.error('create-order failed', error || data?.error);
-      showToast('تعذر تسجيل الطلب في الخادم؛ لم يتم إنشاء طلب محلي أو اعتباره مدفوعًا.');
+      console.error('create_order_atomic failed', error?.message || data?.error || data?.message);
+      showToast(error?.message || data?.error || data?.message || 'تعذر تسجيل الطلب في الخادم.');
       return null;
     }
     if (paymentMethod === 'atlos_crypto' && data.payment_status !== 'pending') {
@@ -685,14 +715,17 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return false;
     }
 
-    let assignedCode = orders.find((order) => order.id === orderId)?.assignedCode;
-    const { data: deliveryRows } = await supabaseClient
-      .from('order_items')
-      .select('delivered_code')
-      .eq('order_id', orderId)
-      .order('created_at', { ascending: true });
-    if (Array.isArray(deliveryRows)) {
-      assignedCode = deliveryRows.map((row) => row.delivered_code).filter(Boolean).join('\n') || assignedCode;
+    const fulfilledOrder = orders.find((order) => order.id === orderId);
+    let assignedCode = fulfilledOrder?.deliveryType === 'instant_code' ? fulfilledOrder.assignedCode : undefined;
+    if (fulfilledOrder?.deliveryType === 'instant_code') {
+      const { data: deliveryRows } = await supabaseClient
+        .from('order_items')
+        .select('delivered_code')
+        .eq('order_id', orderId)
+        .order('created_at', { ascending: true });
+      if (Array.isArray(deliveryRows)) {
+        assignedCode = deliveryRows.map((row) => row.delivered_code).filter(Boolean).join('\n') || assignedCode;
+      }
     }
     const updatedNotes = notes?.trim() || undefined;
     const updateOrder = (order: Order): Order => order.id === orderId

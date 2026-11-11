@@ -203,7 +203,7 @@ export const ProfileScreen: React.FC = () => {
                       </div>
                     </div>
                   </div>
-                  {order.status === 'completed' && order.assignedCode && (
+                  {order.deliveryType === 'instant_code' && order.status === 'completed' && order.assignedCode && (
                     <div className="rounded-lg border border-emerald-800/60 bg-emerald-950/30 p-3">
                       <div className="mb-2 text-[11px] font-bold text-emerald-200">كود/أكواد التسليم الخاصة بطلبك:</div>
                       <pre className="whitespace-pre-wrap break-all font-mono text-sm text-white">{order.assignedCode}</pre>
