@@ -50,8 +50,13 @@ const MainLayout: React.FC = () => {
     setIsApiModalOpen,
     currentUser,
     userRole,
-    isAuthLoading
+    isAuthLoading,
+    checkoutEnabled,
+    atlosEnabled,
+    paymentoEnabled
   } = useStore();
+  const activePaymentProviders = [paymentoEnabled ? 'Paymento' : null, atlosEnabled ? 'ATLOS' : null].filter(Boolean).join(' و');
+  const paymentIsReady = checkoutEnabled && activePaymentProviders.length > 0;
 
   const renderActiveScreenContent = () => {
     const productionSafeScreens = ['splash', 'login', 'auth', 'physical_store', 'home', 'product'];
@@ -115,7 +120,9 @@ const MainLayout: React.FC = () => {
       <Header />
 
       <div role="status" className="border-b border-amber-500/30 bg-amber-950/40 px-4 py-2 text-center text-xs leading-relaxed text-amber-200">
-        SOLO في وضع المعاينة والإعداد. لا توجد معاملات أو عمليات تسليم مفعّلة؛ لا ترسل أي دفعة حتى إعلان جاهزية المتجر.
+        {paymentIsReady
+          ? `الدفع الإلكتروني متاح عبر ${activePaymentProviders}. لا يُعتمد الدفع إلا بعد تأكيد الخادم.`
+          : 'SOLO في وضع المعاينة والإعداد. الشراء متوقف؛ لا ترسل أي دفعة حتى إعلان جاهزية المتجر.'}
       </div>
 
       {/* Floating Notification Toast */}
@@ -240,7 +247,7 @@ const MainLayout: React.FC = () => {
             <div className="p-3 rounded-2xl bg-slate-900/60 border border-slate-800/80">
               <Zap className="w-5 h-5 text-amber-400 mx-auto mb-1.5" />
               <span className="font-bold text-white block">الدفع</span>
-              <span className="text-[10px] text-slate-500">غير متاح حاليًا</span>
+              <span className="text-[10px] text-slate-500">{paymentIsReady ? `متاح عبر ${activePaymentProviders}` : 'غير متاح حاليًا'}</span>
             </div>
           </div>
 
@@ -252,7 +259,7 @@ const MainLayout: React.FC = () => {
               <span>المتجر والخدمات قيد الإعداد</span>
             </div>
             <div>
-              نسخة معاينة من متجر SOLO؛ لا يُقبل الدفع ولا يُنفذ التسليم حاليًا © 2026
+              {paymentIsReady ? 'الدفع يعتمد على تأكيد الخادم، والتسليم الرقمي يخضع للمراجعة © 2026' : 'نسخة معاينة من متجر SOLO؛ لا يُقبل الدفع ولا يُنفذ التسليم حاليًا © 2026'}
             </div>
           </div>
 

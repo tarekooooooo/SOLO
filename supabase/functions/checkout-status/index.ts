@@ -1,9 +1,8 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-import { corsHeaders } from '../_shared/cors.ts';
-
-const headers = { ...corsHeaders, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };
+import { getCorsHeaders } from '../_shared/cors.ts';
 
 Deno.serve(async (req: Request) => {
+  const headers = { ...getCorsHeaders(req.headers.get('origin')), 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };
   if (req.method === 'OPTIONS') return new Response('ok', { headers });
   if (req.method !== 'GET') {
     return new Response(JSON.stringify({ success: false, error: 'Method not allowed.' }), {
@@ -39,14 +38,25 @@ Deno.serve(async (req: Request) => {
   }
 
   const checkoutEnabled = data?.checkout_enabled === true;
+  const { data: paymentoSettings, error: paymentoSettingsError } = await serviceClient
+    .from('store_settings')
+    .select('paymento_enabled')
+    .eq('singleton', true)
+    .maybeSingle();
   const merchantId = Deno.env.get('ATLOS_MERCHANT_ID') || '';
   const webhookSecretConfigured = Boolean(Deno.env.get('ATLOS_API_SECRET'));
   const atlosEnabled = checkoutEnabled && Boolean(merchantId) && webhookSecretConfigured;
+  const paymentoEnabled = checkoutEnabled
+    && !paymentoSettingsError
+    && paymentoSettings?.paymento_enabled === true
+    && Boolean(Deno.env.get('PAYMENTO_API_KEY'))
+    && Boolean(Deno.env.get('PAYMENTO_SECRET_KEY'));
 
   return new Response(JSON.stringify({
     success: true,
     checkout_enabled: checkoutEnabled,
     atlos_enabled: atlosEnabled,
     atlos_merchant_id: atlosEnabled ? merchantId : null,
+    paymento_enabled: paymentoEnabled,
   }), { status: 200, headers });
 });
