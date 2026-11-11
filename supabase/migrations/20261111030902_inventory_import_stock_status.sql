@@ -1,6 +1,8 @@
 -- Keep the catalog availability flag consistent after an admin imports new
 -- digital codes. The existing import function already refreshes stock_count,
 -- but previously left in_stock false after a product had sold out.
+-- Preserve package delivery compatibility using the self-contained helper
+-- defined in 20261111030901_paymento_crypto_gateway.sql, not PR #2's helper.
 BEGIN;
 
 CREATE OR REPLACE FUNCTION public.admin_import_inventory(
@@ -17,6 +19,7 @@ AS $$
 DECLARE
   v_delivery_type public.delivery_type;
   v_packages JSONB;
+  v_package JSONB;
   v_inserted INTEGER;
   v_available BIGINT;
 BEGIN
@@ -57,15 +60,28 @@ BEGIN
   FROM public.products AS product
   WHERE product.id = p_product_id
   FOR UPDATE;
-  IF NOT FOUND OR v_delivery_type <> 'instant_code'::public.delivery_type THEN
+  IF NOT FOUND THEN
     RAISE EXCEPTION 'instant_code_product_required';
   END IF;
-  IF jsonb_typeof(v_packages) <> 'array' OR NOT EXISTS (
-    SELECT 1
-    FROM jsonb_array_elements(v_packages) AS package(value)
-    WHERE COALESCE(package.value->>'id', package.value->>'package_id') = btrim(p_package_id)
-  ) THEN
+  IF jsonb_typeof(v_packages) IS DISTINCT FROM 'array' THEN
     RAISE EXCEPTION 'package_not_found';
+  END IF;
+  SELECT package.value INTO v_package
+  FROM jsonb_array_elements(v_packages) AS package(value)
+  WHERE COALESCE(package.value->>'id', package.value->>'package_id') = btrim(p_package_id)
+  LIMIT 1;
+  IF v_package IS NULL THEN
+    RAISE EXCEPTION 'package_not_found';
+  END IF;
+  IF NOT (
+    private.solo_package_supports_delivery(
+      v_delivery_type, v_package, 'instant_code'::public.delivery_type
+    )
+    OR private.solo_package_supports_delivery(
+      v_delivery_type, v_package, 'direct_id_recharge'::public.delivery_type
+    )
+  ) THEN
+    RAISE EXCEPTION 'instant_code_product_required';
   END IF;
 
   INSERT INTO public.inventory (product_id, package_id, code_value)

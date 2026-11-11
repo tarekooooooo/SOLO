@@ -7,10 +7,33 @@ BEGIN;
 ALTER TABLE public.store_settings
   ADD COLUMN IF NOT EXISTS paymento_enabled BOOLEAN NOT NULL DEFAULT FALSE;
 
--- Paymento-specific amendment based on the current main order function.
--- stock_count remains an aggregate catalog counter; instant-code packages are
--- checked against existing package_id rows and reserved by main's existing trigger.
--- No new per-package inventory schema or PR #2 dual-delivery behavior is introduced.
+-- Recreate the production package-compatibility rule locally so this migration
+-- works on main without depending on the helper introduced by PR #2.
+CREATE SCHEMA IF NOT EXISTS private;
+CREATE OR REPLACE FUNCTION private.solo_package_supports_delivery(
+  p_product_delivery public.delivery_type,
+  p_package JSONB,
+  p_requested public.delivery_type
+)
+RETURNS BOOLEAN
+LANGUAGE SQL
+IMMUTABLE
+SET search_path = pg_catalog
+AS $helper$
+  SELECT CASE
+    WHEN p_package IS NOT NULL
+      AND jsonb_typeof(p_package->'delivery_types') = 'array'
+    THEN EXISTS (
+      SELECT 1
+      FROM jsonb_array_elements_text(p_package->'delivery_types') AS supported(value)
+      WHERE supported.value = p_requested::TEXT
+    )
+    ELSE COALESCE(p_product_delivery = p_requested, FALSE)
+  END;
+$helper$;
+REVOKE ALL ON FUNCTION private.solo_package_supports_delivery(public.delivery_type, JSONB, public.delivery_type)
+  FROM PUBLIC, anon, authenticated;
+
 CREATE OR REPLACE FUNCTION public.create_order_atomic(
   p_idempotency_key TEXT,
   p_customer_name TEXT,
@@ -46,8 +69,8 @@ DECLARE
   v_expired_order_id UUID;
   v_expired_item RECORD;
   v_item_qty INT;
-  v_available_package_codes INTEGER;
-  v_available_total_codes INTEGER;
+  v_code_based BOOLEAN;
+  v_available INTEGER;
   v_item_unit_price NUMERIC(10, 2);
   v_item_total NUMERIC(10, 2);
 BEGIN
@@ -123,6 +146,15 @@ BEGIN
   IF p_delivery_type = 'physical_shipment' THEN
     RAISE EXCEPTION 'الشراء والشحن الماديان متوقفان حتى احتساب عرض شحن حي من CJ.';
   END IF;
+  IF p_delivery_type = 'direct_id_recharge'::public.delivery_type THEN
+    IF p_target_player_id IS NULL OR length(trim(p_target_player_id)) < 3 OR length(trim(p_target_player_id)) > 64 THEN
+      RAISE EXCEPTION 'معرّف اللاعب (ID) مطلوب للشحن المباشر ويجب أن يكون بين 3 و64 محرفًا.';
+    END IF;
+  END IF;
+  v_code_based := p_delivery_type IN (
+    'instant_code'::public.delivery_type,
+    'direct_id_recharge'::public.delivery_type
+  );
 
   -- 3. Validate items array
   IF p_items IS NULL OR jsonb_typeof(p_items) <> 'array' OR jsonb_array_length(p_items) = 0 THEN
@@ -171,6 +203,7 @@ BEGIN
       RAISE EXCEPTION 'الكمية يجب أن تكون بين 1 و10.';
     END IF;
 
+    v_package := NULL;
     SELECT * INTO v_product FROM public.products
     WHERE id = (v_item->>'product_id')::UUID
     FOR UPDATE;
@@ -179,16 +212,15 @@ BEGIN
       RAISE EXCEPTION 'المنتج المطلوب غير موجود: %', (v_item->>'product_id');
     END IF;
 
-    IF v_product.product_type <> 'digital'::product_type OR v_product.delivery_type <> p_delivery_type THEN
-      RAISE EXCEPTION 'نوع التسليم لا يطابق إعداد المنتج: %', v_product.title_ar;
+    IF NOT v_product.in_stock THEN
+      RAISE EXCEPTION 'المنتج غير متوفر حالياً بالمخزون: %', v_product.title_ar;
     END IF;
-    IF v_product.delivery_type <> 'instant_code'::public.delivery_type
-       AND (NOT v_product.in_stock OR v_product.stock_count < v_item_qty) THEN
-      RAISE EXCEPTION 'الكمية المطلوبة غير متاحة بالمخزون: %', v_product.title_ar;
+    IF v_product.product_type <> 'digital'::product_type THEN
+      RAISE EXCEPTION 'نوع التسليم لا يطابق إعداد المنتج: %', v_product.title_ar;
     END IF;
 
     v_item_unit_price := v_product.price_usd;
-    IF v_product.delivery_type = 'instant_code'::public.delivery_type
+    IF v_code_based
        AND NULLIF(v_item->>'package_or_variant', '') IS NULL THEN
       RAISE EXCEPTION 'يجب تحديد الباقة المطلوبة قبل إنشاء الطلب.';
     END IF;
@@ -212,16 +244,22 @@ BEGIN
         RAISE EXCEPTION 'سعر الباقة غير صالح في قاعدة البيانات: %', v_product.title_ar;
       END IF;
     END IF;
-    IF v_product.delivery_type = 'instant_code'::public.delivery_type THEN
-      SELECT COUNT(*)::INTEGER INTO v_available_package_codes
+
+    IF NOT private.solo_package_supports_delivery(v_product.delivery_type, v_package, p_delivery_type) THEN
+      RAISE EXCEPTION 'نوع التسليم لا يطابق إعداد المنتج: %', v_product.title_ar;
+    END IF;
+    IF v_code_based THEN
+      SELECT COUNT(*)::INTEGER INTO v_available
       FROM public.inventory
       WHERE product_id = v_product.id
         AND package_id = v_item->>'package_or_variant'
         AND is_used = FALSE
         AND order_id IS NULL;
-      IF v_available_package_codes < v_item_qty THEN
-        RAISE EXCEPTION 'الكمية المطلوبة من أكواد الباقة غير متاحة حالياً.';
+      IF v_available < v_item_qty THEN
+        RAISE EXCEPTION 'الكمية المطلوبة غير متاحة لهذه الباقة حالياً: %', v_product.title_ar;
       END IF;
+    ELSIF v_product.stock_count < v_item_qty THEN
+      RAISE EXCEPTION 'الكمية المطلوبة غير متاحة بالمخزون: %', v_product.title_ar;
     END IF;
     v_item_total := v_item_unit_price * v_item_qty;
     v_subtotal := v_subtotal + v_item_total;
@@ -326,24 +364,11 @@ BEGIN
       v_item_unit_price * v_item_qty
     );
 
-    IF v_product.delivery_type = 'instant_code'::public.delivery_type THEN
-      SELECT COUNT(*)::INTEGER INTO v_available_total_codes
-      FROM public.inventory
-      WHERE product_id = v_product.id
-        AND is_used = FALSE
-        AND order_id IS NULL;
-      UPDATE public.products
-      SET stock_count = v_available_total_codes,
-          in_stock = v_available_total_codes > 0,
-          updated_at = NOW()
-      WHERE id = v_product.id;
-    ELSE
-      UPDATE public.products
-      SET stock_count = stock_count - v_item_qty,
-          in_stock = (stock_count - v_item_qty) > 0,
-          updated_at = NOW()
-      WHERE id = v_product.id;
-    END IF;
+    UPDATE public.products
+    SET stock_count = greatest(stock_count - v_item_qty, 0),
+        in_stock = (stock_count - v_item_qty) > 0,
+        updated_at = NOW()
+    WHERE id = v_product.id;
   END LOOP;
 
   RETURN jsonb_build_object(
@@ -357,6 +382,81 @@ BEGIN
   );
 END;
 $$;
+
+-- Main's order-item trigger reserves instant-code inventory. Extend the same
+-- package-locked reservation to direct-ID orders while retaining compatibility
+-- checks; every reservation remains atomic with its order item insert.
+CREATE OR REPLACE FUNCTION public.reserve_codes_after_order_item_insert()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public, pg_temp
+AS $function$
+DECLARE
+  v_order_delivery public.delivery_type;
+  v_product_delivery public.delivery_type;
+  v_packages JSONB;
+  v_package JSONB;
+  v_reserved INTEGER;
+BEGIN
+  SELECT order_row.delivery_type, product_row.delivery_type, product_row.packages
+    INTO v_order_delivery, v_product_delivery, v_packages
+  FROM public.orders AS order_row
+  JOIN public.products AS product_row ON product_row.id = NEW.product_id
+  WHERE order_row.id = NEW.order_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'order_or_product_not_found';
+  END IF;
+
+  IF v_order_delivery IN (
+    'instant_code'::public.delivery_type,
+    'direct_id_recharge'::public.delivery_type
+  ) THEN
+    IF NEW.package_or_variant IS NULL OR NEW.quantity < 1 THEN
+      RAISE EXCEPTION 'invalid_code_reservation_request';
+    END IF;
+
+    SELECT package_row INTO v_package
+    FROM jsonb_array_elements(
+      CASE WHEN jsonb_typeof(v_packages) = 'array' THEN v_packages ELSE '[]'::JSONB END
+    ) AS packages(package_row)
+    WHERE COALESCE(package_row->>'id', package_row->>'name', package_row->>'title') = NEW.package_or_variant
+    LIMIT 1;
+
+    IF v_package IS NULL
+       OR NOT private.solo_package_supports_delivery(v_product_delivery, v_package, v_order_delivery) THEN
+      RAISE EXCEPTION 'invalid_code_reservation_request';
+    END IF;
+
+    WITH candidates AS (
+      SELECT inventory_row.id
+      FROM public.inventory AS inventory_row
+      WHERE inventory_row.product_id = NEW.product_id
+        AND inventory_row.package_id = NEW.package_or_variant
+        AND inventory_row.is_used = FALSE
+        AND inventory_row.order_id IS NULL
+      ORDER BY inventory_row.id
+      FOR UPDATE SKIP LOCKED
+      LIMIT NEW.quantity
+    )
+    UPDATE public.inventory AS inventory_row
+    SET order_id = NEW.order_id,
+        allocated_at = NOW()
+    FROM candidates
+    WHERE inventory_row.id = candidates.id;
+    GET DIAGNOSTICS v_reserved = ROW_COUNT;
+
+    IF v_reserved <> NEW.quantity THEN
+      RAISE EXCEPTION 'insufficient_reserved_codes_for_package';
+    END IF;
+  END IF;
+
+  RETURN NEW;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.reserve_codes_after_order_item_insert()
+  FROM PUBLIC, anon, authenticated;
 
 -- Keep one active Paymento session per local order. The opaque token is stored
 -- only in this service-role-only table so retries reuse the same checkout link.
