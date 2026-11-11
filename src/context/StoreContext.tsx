@@ -196,7 +196,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [viewMode, setViewMode] = useState<'desktop' | 'mobile_simulator' | 'guide'>('desktop');
   const [showOriginalDesigns, setShowOriginalDesigns] = useState<boolean>(false);
 
-  const [currencyCode, setCurrencyCodeState] = useState<CurrencyCode>('SAR');
+  const [currencyCode, setCurrencyCodeState] = useState<CurrencyCode>(import.meta.env.DEV ? 'SAR' : 'USD');
   const currency = CURRENCIES[currencyCode] || CURRENCIES.USD;
 
   const [checkoutEnabled, setCheckoutEnabled] = useState(false);
@@ -1010,14 +1010,14 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   const loginWithEmail = async (email: string, pass: string) => {
-    if (!supabaseClient) throw new Error('خدمة تسجيل الدخول غير مهيأة؛ أضف متغيرات Supabase العامة إلى Netlify.');
+    if (!supabaseClient) throw new Error('خدمة تسجيل الدخول غير مهيأة؛ أضف متغيرات Supabase العامة إلى Cloudflare Pages.');
     const { error } = await supabaseClient.auth.signInWithPassword({ email: email.trim(), password: pass });
     if (error) throw error;
     setActiveScreen('home');
   };
 
   const registerWithEmail = async (name: string, email: string, pass: string) => {
-    if (!supabaseClient) throw new Error('خدمة التسجيل غير مهيأة؛ أضف متغيرات Supabase العامة إلى Netlify.');
+    if (!supabaseClient) throw new Error('خدمة التسجيل غير مهيأة؛ أضف متغيرات Supabase العامة إلى Cloudflare Pages.');
     const { data, error } = await supabaseClient.auth.signUp({
       email: email.trim(),
       password: pass,

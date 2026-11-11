@@ -146,13 +146,13 @@ export const MobileFrame: React.FC<MobileFrameProps> = ({ children }) => {
           </button>
 
           <button
-            onClick={() => setActiveScreen('merchant')}
+            onClick={() => setActiveScreen('home')}
             className={`flex flex-col items-center gap-1 transition-colors ${
               activeScreen === 'merchant' ? 'text-cyan-400 font-bold' : 'text-slate-500 hover:text-slate-300'
             }`}
           >
             <ShoppingBag className="w-4 h-4" />
-            <span className="text-[10px]">المتجر</span>
+            <span className="text-[10px]">المتجر الرقمي</span>
           </button>
 
           <button
