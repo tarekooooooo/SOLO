@@ -26,7 +26,9 @@ export const AuthScreen: React.FC = () => {
     logout,
     setIsApiModalOpen,
     setActiveScreen,
-    apiConfig
+    apiConfig,
+    checkoutEnabled,
+    atlosEnabled
   } = useStore();
 
   const [mode, setMode] = useState<'login' | 'register' | 'forgot'>('login');
@@ -51,7 +53,7 @@ export const AuthScreen: React.FC = () => {
         if (!name || !email || !password) return;
         await registerWithEmail(name, email, password);
       } else {
-        setAuthError('استعادة كلمة المرور غير موصولة بعد. لم نرسل رسالة وهمية.');
+        setAuthError('استعادة كلمة المرور غير متاحة في هذه النسخة.');
       }
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : 'تعذر إتمام المصادقة.');
@@ -137,7 +139,11 @@ export const AuthScreen: React.FC = () => {
           </h2>
           <p className="text-xs text-slate-400">
             {mode === 'login' 
-              ? 'سجل دخولك لإدارة حسابك. الشراء والتسليم غير متاحين حتى اكتمال الربط.'
+              ? atlosEnabled
+                ? 'سجّل الدخول للشراء ومتابعة طلباتك الرقمية. يؤكد الخادم الدفع قبل مراجعة التسليم.'
+                : checkoutEnabled
+                  ? 'يمكنك استعراض المتجر كضيف؛ إعداد الدفع لم يكتمل بعد.'
+                  : 'يمكنك استعراض المنتجات كضيف. الشراء متوقف حتى المراجعة والتفعيل النهائي.'
               : 'أنشئ حسابًا في SOLO. قد تحتاج إلى تأكيد بريدك الإلكتروني قبل تسجيل الدخول.'}
           </p>
         </div>
@@ -186,6 +192,7 @@ export const AuthScreen: React.FC = () => {
           {/* Telegram Login */}
           <button
             type="button"
+            style={{ display: import.meta.env.DEV ? undefined : 'none' }}
             onClick={handleTelegramLoginClick}
             className="w-full py-3 px-4 rounded-2xl bg-[#2AABEE] hover:bg-[#229ED9] text-white font-bold text-xs flex items-center justify-center gap-3 shadow-md transition-transform active:scale-[0.99]"
           >
@@ -195,7 +202,7 @@ export const AuthScreen: React.FC = () => {
         </div>
 
         {/* Telegram Prompt Modal/Inline for username */}
-        {showTelegramPrompt && (
+        {import.meta.env.DEV && showTelegramPrompt && (
           <div className="p-4 rounded-2xl bg-[#0b1320] border border-[#2AABEE]/40 space-y-3 animate-fadeIn">
             <div className="text-xs font-bold text-white flex items-center gap-2">
               <Send className="w-3.5 h-3.5 text-[#2AABEE]" />
@@ -277,6 +284,7 @@ export const AuthScreen: React.FC = () => {
               {mode === 'login' && (
                 <button
                   type="button"
+                  style={{ display: import.meta.env.DEV ? undefined : 'none' }}
                   onClick={() => setMode('forgot')}
                   className="text-[11px] text-cyan-400 hover:underline"
                 >
