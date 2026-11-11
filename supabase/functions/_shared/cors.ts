@@ -1,6 +1,5 @@
 const allowedOrigins = new Set([
   'https://solo-5kv.pages.dev',
-  'https://solostor.netlify.app',
 ]);
 
 const cloudflarePreviewOriginPattern = /^https:\/\/[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.solo-5kv\.pages\.dev$/i;
