@@ -80,6 +80,7 @@ interface StoreContextType {
   // Navigation & View
   checkoutEnabled: boolean;
   atlosEnabled: boolean;
+  paymentoEnabled: boolean;
   atlosMerchantId: string | null;
   activeScreen: ScreenId;
   setActiveScreen: (screen: ScreenId) => void;
@@ -196,6 +197,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const [checkoutEnabled, setCheckoutEnabled] = useState(false);
   const [atlosEnabled, setAtlosEnabled] = useState(false);
+  const [paymentoEnabled, setPaymentoEnabled] = useState(false);
   const [atlosMerchantId, setAtlosMerchantId] = useState<string | null>(null);
   const [products, setProducts] = useState<Product[]>(() => import.meta.env.DEV ? INITIAL_PRODUCTS : []);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -268,6 +270,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (!active || error || data?.success !== true) return;
         setCheckoutEnabled(data.checkout_enabled === true);
         setAtlosEnabled(data.atlos_enabled === true);
+        setPaymentoEnabled(data.paymento_enabled === true);
         setAtlosMerchantId(typeof data.atlos_merchant_id === 'string' ? data.atlos_merchant_id : null);
       } catch {
         // Fail closed: checkout remains disabled if status cannot be verified.
@@ -585,8 +588,10 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }
 
     const normalizedMethod = String(orderData.paymentMethod).toLowerCase();
-    const paymentMethod = normalizedMethod.includes('atlos')
-      ? 'atlos_crypto'
+    const paymentMethod = normalizedMethod.includes('paymento')
+      ? 'paymento_crypto'
+      : normalizedMethod.includes('atlos')
+        ? 'atlos_crypto'
       : normalizedMethod.includes('libyana') || normalizedMethod.includes('ليبيانا')
       ? 'libyana'
       : normalizedMethod.includes('almadar') || normalizedMethod.includes('المدار')
@@ -601,12 +606,16 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       showToast('بوابة ATLOS غير جاهزة أو checkout مغلق؛ لم يتم إنشاء طلب.');
       return null;
     }
+    if (paymentMethod === 'paymento_crypto' && !paymentoEnabled) {
+      showToast('بوابة Paymento غير جاهزة أو checkout مغلق؛ لم يتم إنشاء طلب.');
+      return null;
+    }
 
     if (!paymentMethod) {
       showToast('هذه وسيلة الدفع غير مفعّلة بعد. المتاح حاليًا هو الدفع اليدوي بعد ربط قاعدة البيانات.');
       return null;
     }
-    if (paymentMethod !== 'atlos_crypto' && !orderData.paymentReference?.trim()) {
+    if (paymentMethod !== 'atlos_crypto' && paymentMethod !== 'paymento_crypto' && !orderData.paymentReference?.trim()) {
       showToast('أدخل مرجع التحويل قبل إرسال الطلب للمراجعة.');
       return null;
     }
@@ -624,7 +633,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         customerPhone: orderData.customerPhone || null,
         deliveryType: orderData.deliveryType,
         paymentMethod,
-        paymentReference: paymentMethod === 'atlos_crypto' ? null : orderData.paymentReference!.trim(),
+        paymentReference: paymentMethod === 'atlos_crypto' || paymentMethod === 'paymento_crypto' ? null : orderData.paymentReference!.trim(),
         targetPlayerId: orderData.targetPlayerId || null,
         targetPlayerName: orderData.targetPlayerName || null,
         items: [{
@@ -640,14 +649,15 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       showToast('تعذر تسجيل الطلب في الخادم؛ لم يتم إنشاء طلب محلي أو اعتباره مدفوعًا.');
       return null;
     }
-    if (paymentMethod === 'atlos_crypto' && data.payment_status !== 'pending') {
+    if ((paymentMethod === 'atlos_crypto' || paymentMethod === 'paymento_crypto') && data.payment_status !== 'pending') {
       try {
         const scope = `${orderData.productId}:${orderData.packageId || ''}`;
-        localStorage.removeItem(`solo_atlos_idempotency:${encodeURIComponent(currentUser.id)}:${encodeURIComponent(scope)}`);
+        const storagePrefix = paymentMethod === 'paymento_crypto' ? 'solo_paymento_idempotency' : 'solo_atlos_idempotency';
+        localStorage.removeItem(`${storagePrefix}:${encodeURIComponent(currentUser.id)}:${encodeURIComponent(scope)}`);
       } catch {
         // Ignore browser storage failures; the server still refuses to reopen this order.
       }
-      showToast('يوجد طلب سابق بهذا المفتاح وحالته ليست انتظار الدفع؛ لم يتم فتح ودجت ATLOS.');
+      showToast('يوجد طلب سابق بهذا المفتاح وحالته ليست انتظار الدفع؛ لم يتم فتح بوابة الدفع.');
       return null;
     }
 
@@ -657,11 +667,11 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       orderNumber: String(data.order_number),
       priceUSD: Number(data.total_usd),
       date: new Date().toISOString(),
-      status: paymentMethod === 'atlos_crypto' ? 'pending' : 'awaiting_manual_review',
+      status: paymentMethod === 'atlos_crypto' || paymentMethod === 'paymento_crypto' ? 'pending' : 'awaiting_manual_review',
     };
     setOrders((prev) => [newOrder, ...prev]);
-    showToast(paymentMethod === 'atlos_crypto'
-      ? `سُجل الطلب ${newOrder.orderNumber}؛ لا يُعتمد الدفع إلا بعد تحقق الخادم من إشعار ATLOS.`
+    showToast(paymentMethod === 'atlos_crypto' || paymentMethod === 'paymento_crypto'
+      ? `سُجل الطلب ${newOrder.orderNumber}؛ لا يُعتمد الدفع إلا بعد التحقق الخادمي من إشعار ${paymentMethod === 'paymento_crypto' ? 'Paymento' : 'ATLOS'}.`
       : `سُجل الطلب ${newOrder.orderNumber} في الخادم وهو بانتظار مراجعة التحويل.`);
     return newOrder;
   };
@@ -1014,6 +1024,7 @@ export const StoreProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       value={{
         checkoutEnabled,
         atlosEnabled,
+        paymentoEnabled,
         atlosMerchantId,
         activeScreen,
         setActiveScreen,
