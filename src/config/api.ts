@@ -4,14 +4,14 @@
  * All sensitive keys (CJ_ACCESS_TOKEN, payment secrets) reside strictly in Supabase Server Secrets.
  */
 
-export const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL || '').replace(/\/$/, '');
-export const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+export const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL || '').trim().replace(/\/+$/, '');
+export const SUPABASE_ANON_KEY = (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
 
 // Edge Functions endpoint URL
 export const FUNCTIONS_BASE_URL = (
   import.meta.env.VITE_SUPABASE_FUNCTIONS_URL || 
   (SUPABASE_URL ? `${SUPABASE_URL}/functions/v1` : '')
-).replace(/\/$/, '');
+).trim().replace(/\/+$/, '');
 
 /**
  * Returns the URL for invoking a Supabase Edge Function
