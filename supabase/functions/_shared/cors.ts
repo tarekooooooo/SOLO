@@ -2,12 +2,9 @@ const allowedOrigins = new Set([
   'https://solo-5kv.pages.dev',
 ]);
 
-const cloudflarePreviewOriginPattern = /^https:\/\/[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.solo-5kv\.pages\.dev$/i;
-
 export function isAllowedOrigin(origin?: string | null): origin is string {
   if (!origin) return false;
-  if (allowedOrigins.has(origin)) return true;
-  return cloudflarePreviewOriginPattern.test(origin);
+  return allowedOrigins.has(origin);
 }
 
 export function getCorsHeaders(origin?: string | null) {

@@ -78,7 +78,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const manualMethods = ['libyana', 'almadar', 'bank_transfer', 'payoneer'];
-    const supportedMethods = [...manualMethods, 'atlos_crypto'];
+    const supportedMethods = [...manualMethods, 'atlos_crypto', 'paymento_crypto'];
     if (!supportedMethods.includes(paymentMethod)) {
       return new Response(
         JSON.stringify({ error: 'وسيلة الدفع غير متاحة حاليًا.' }),
@@ -91,9 +91,15 @@ Deno.serve(async (req: Request) => {
         { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-    if (paymentMethod === 'atlos_crypto' && paymentReference != null) {
+    if (paymentMethod === 'paymento_crypto' && (!Deno.env.get('PAYMENTO_API_KEY') || !Deno.env.get('PAYMENTO_SECRET_KEY'))) {
       return new Response(
-        JSON.stringify({ error: 'لا تقبل مرجع دفع من المتصفح لوسيلة ATLOS.' }),
+        JSON.stringify({ error: 'بوابة Paymento غير جاهزة على الخادم؛ لم يتم إنشاء طلب.' }),
+        { status: 503, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    if (['atlos_crypto', 'paymento_crypto'].includes(paymentMethod) && paymentReference != null) {
+      return new Response(
+        JSON.stringify({ error: 'لا تقبل مراجع دفع من المتصفح لبوابات العملات الرقمية.' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }

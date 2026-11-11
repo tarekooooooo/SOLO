@@ -10,9 +10,10 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test:atlos": "node --import tsx --test supabase/functions/atlos-webhook/signature.test.ts",
+    "test:atlos": "node --import tsx --test supabase/functions/atlos-webhook/signature.test.ts supabase/functions/atlos-webhook/amount.test.ts",
+    "test:paymento": "node --import tsx --test supabase/functions/paymento-webhook/signature.test.ts",
     "test:cors": "node --import tsx --test supabase/functions/_shared/cors.test.ts",
-    "test": "npm run test:atlos && npm run test:cors"
+    "test": "npm run test:atlos && npm run test:paymento && npm run test:cors"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

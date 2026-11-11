@@ -38,14 +38,25 @@ Deno.serve(async (req: Request) => {
   }
 
   const checkoutEnabled = data?.checkout_enabled === true;
+  const { data: paymentoSettings, error: paymentoSettingsError } = await serviceClient
+    .from('store_settings')
+    .select('paymento_enabled')
+    .eq('singleton', true)
+    .maybeSingle();
   const merchantId = Deno.env.get('ATLOS_MERCHANT_ID') || '';
   const webhookSecretConfigured = Boolean(Deno.env.get('ATLOS_API_SECRET'));
   const atlosEnabled = checkoutEnabled && Boolean(merchantId) && webhookSecretConfigured;
+  const paymentoEnabled = checkoutEnabled
+    && !paymentoSettingsError
+    && paymentoSettings?.paymento_enabled === true
+    && Boolean(Deno.env.get('PAYMENTO_API_KEY'))
+    && Boolean(Deno.env.get('PAYMENTO_SECRET_KEY'));
 
   return new Response(JSON.stringify({
     success: true,
     checkout_enabled: checkoutEnabled,
     atlos_enabled: atlosEnabled,
     atlos_merchant_id: atlosEnabled ? merchantId : null,
+    paymento_enabled: paymentoEnabled,
   }), { status: 200, headers });
 });

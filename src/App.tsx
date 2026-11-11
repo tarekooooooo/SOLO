@@ -53,8 +53,11 @@ const MainLayout: React.FC = () => {
     isAuthLoading,
     checkoutEnabled,
     atlosEnabled,
+    paymentoEnabled,
     products
   } = useStore();
+  const activePaymentProviders = [paymentoEnabled ? 'Paymento' : null, atlosEnabled ? 'ATLOS' : null].filter(Boolean).join(' و');
+  const paymentIsReady = checkoutEnabled && activePaymentProviders.length > 0;
 
   const renderActiveScreenContent = () => {
     const productionSafeScreens = ['splash', 'login', 'auth', 'home', 'product', 'admin', 'merchant'];
@@ -126,9 +129,9 @@ const MainLayout: React.FC = () => {
       {/* Top Bar following Top Bar Contract */}
       <Header />
 
-      <div role="status" className={`border-b px-4 py-2 text-center text-xs leading-relaxed ${atlosEnabled ? 'border-emerald-500/30 bg-emerald-950/40 text-emerald-200' : 'border-amber-500/30 bg-amber-950/40 text-amber-200'}`}>
-        {atlosEnabled
-          ? 'الدفع عبر ATLOS متاح. يؤكد الخادم حالة الدفع؛ وبعد التأكيد يراجع فريق المتجر تسليم المنتج الرقمي.'
+      <div role="status" className={`border-b px-4 py-2 text-center text-xs leading-relaxed ${paymentIsReady ? 'border-emerald-500/30 bg-emerald-950/40 text-emerald-200' : 'border-amber-500/30 bg-amber-950/40 text-amber-200'}`}>
+        {paymentIsReady
+          ? `الدفع متاح عبر ${activePaymentProviders} بعد اعتماد الخادم؛ ويُراجع فريق المتجر التسليم الرقمي.`
           : checkoutEnabled
             ? 'إعداد الدفع غير مكتمل؛ لا يتم إنشاء طلب أو فتح نافذة دفع حاليًا.'
             : 'المتجر في وضع المعاينة. الشراء متوقف حتى اكتمال المراجعة والتفعيل النهائي؛ لا تحوّل أموالاً.'}
@@ -256,7 +259,7 @@ const MainLayout: React.FC = () => {
             <div className="p-3 rounded-2xl bg-slate-900/60 border border-slate-800/80">
               <Zap className="w-5 h-5 text-amber-400 mx-auto mb-1.5" />
               <span className="font-bold text-white block">الدفع</span>
-              <span className="text-[10px] text-slate-500">{atlosEnabled ? 'ATLOS متاحة' : 'مغلق حتى المراجعة'}</span>
+              <span className="text-[10px] text-slate-500">{paymentIsReady ? `متاح عبر ${activePaymentProviders}` : 'غير متاح حاليًا'}</span>
             </div>
           </div>
 
@@ -268,7 +271,7 @@ const MainLayout: React.FC = () => {
               <span>متجر SOLO الرقمي</span>
             </div>
             <div>
-              {atlosEnabled ? 'تأكيد الدفع من الخادم؛ التسليم يُكمله فريق المتجر بعد المراجعة.' : 'نسخة معاينة؛ لا يُقبل الدفع أو يُنشأ طلب قبل التفعيل النهائي.'} © 2026
+              {paymentIsReady ? 'الدفع يعتمد على تأكيد الخادم؛ والتسليم الرقمي يخضع لمراجعة فريق المتجر.' : 'نسخة معاينة؛ لا يُقبل الدفع ولا يُنشأ طلب قبل التفعيل النهائي.'} © 2026
             </div>
           </div>
 

@@ -122,6 +122,7 @@ export const PhysicalProductDetailModal: React.FC<PhysicalProductDetailModalProp
     const paymentMethodLabels: Record<PaymentMethod, string> = {
       wallet: 'رصيد المحفظة الإلكترونية',
       atlos_crypto: 'بوابة ATLOS المشفرة (USDT / Crypto)',
+      paymento_crypto: 'Paymento (غير متاح للمنتجات المادية)',
       libyana: 'رصيد وكروت ليبيانا (دفع يدوي)',
       almadar: 'رصيد وكروت المدار الجديد (دفع يدوي)',
       bank_transfer: 'تحويل مصرفي مباشر (دفع يدوي)',
