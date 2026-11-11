@@ -74,7 +74,7 @@ export const ProductDetailScreen: React.FC = () => {
   const [atlosPaymentSubmitted, setAtlosPaymentSubmitted] = useState(false);
   const atlosIdempotencyRef = useRef<{ scope: string; key: string } | null>(null);
 
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('libyana');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('atlos_crypto');
   const isDirectRecharge = product?.deliveryType === 'direct_id_recharge';
   const isManualPayment = ['libyana', 'almadar', 'bank_transfer', 'payoneer'].includes(paymentMethod);
 
@@ -208,7 +208,7 @@ export const ProductDetailScreen: React.FC = () => {
 
           {!atlosEnabled && (
             <div role="status" className="mx-4 mt-4 rounded-xl border border-amber-500/40 bg-amber-950/30 px-3 py-2 text-xs leading-relaxed text-amber-200">
-              {checkoutEnabled ? 'بوابة الدفع غير جاهزة بعد؛ لا تدخل بيانات دفع.' : 'المتجر في وضع المعاينة. الشراء متوقف حاليًا لعدم اكتمال مخزون الأكواد والتسليم الآمن؛ لا تحوّل أموالًا ولا تدخل بيانات دفع.'}
+              {checkoutEnabled ? 'بوابة الدفع غير جاهزة بعد؛ لا تدخل بيانات دفع.' : 'المتجر في وضع المعاينة؛ الشراء متوقف حتى المراجعة والتفعيل النهائي. لا تحوّل أموالًا ولا تدخل بيانات دفع.'}
             </div>
           )}
         
@@ -247,9 +247,13 @@ export const ProductDetailScreen: React.FC = () => {
           </p>
 
           {/* Integration status */}
-          <div role="status" className="p-3 rounded-xl bg-slate-900/80 border border-amber-700/50 flex items-center gap-2 text-xs text-amber-200">
+          <div role="status" className={`p-3 rounded-xl bg-slate-900/80 flex items-center gap-2 text-xs ${atlosEnabled ? 'border border-emerald-700/50 text-emerald-200' : 'border border-amber-700/50 text-amber-200'}`}>
             <Info className="w-4 h-4 shrink-0" />
-            <span>تأكيد الدفع والتسليم غير مفعّل حاليًا؛ لا تحوّل أموالًا ولا تعتبر المنتج متاحًا للشراء.</span>
+            <span>{atlosEnabled
+              ? 'يؤكد الخادم الدفع عبر ATLOS؛ بعد التأكيد يراجع فريق المتجر تسليم المنتج الرقمي.'
+              : checkoutEnabled
+                ? 'إعداد بوابة الدفع غير مكتمل؛ لا يتم إنشاء طلب أو فتح نافذة دفع.'
+                : 'المتجر في وضع المعاينة؛ الشراء مغلق حتى المراجعة والتفعيل النهائي. لا تحوّل أموالًا.'}</span>
           </div>
 
           {/* اختر الكمية (Select Package / Quantity - Exact layout from Screen 4) */}
@@ -259,7 +263,7 @@ export const ProductDetailScreen: React.FC = () => {
                 <Layers className="w-4 h-4 text-cyan-400" />
                 <span>اختر الكمية / الباقة:</span>
               </label>
-              <span className="text-[11px] text-slate-400">أسعار شاملة الضريبة</span>
+              <span className="text-[11px] text-slate-400">الأسعار بالدولار الأمريكي</span>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -308,7 +312,7 @@ export const ProductDetailScreen: React.FC = () => {
               <div className="flex items-center justify-between">
                 <label className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
                   <User className="w-4 h-4 text-cyan-400" />
-                  <span>معرّف اللاعب (Player ID) المطلوب شحنه:</span>
+                  <span>معرّف اللاعب (ID) المطلوب للشحن اليدوي — إلزامي:</span>
                 </label>
                 <span className="text-[10px] text-emerald-400 flex items-center gap-1">
                   <ShieldCheck className="w-3.5 h-3.5" /> لا نطلب كلمة المرور أبداً
@@ -397,8 +401,9 @@ export const ProductDetailScreen: React.FC = () => {
 
               <button
                 type="button"
+                disabled
                 onClick={() => setPaymentMethod('libyana')}
-                className={`p-2.5 rounded-xl border text-right transition-all ${
+                className={`p-2.5 rounded-xl border text-right transition-all opacity-50 cursor-not-allowed ${
                   paymentMethod === 'libyana'
                     ? 'border-cyan-400 bg-cyan-500/10 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.2)]'
                     : 'border-slate-800 bg-slate-800/60 text-slate-300 hover:border-slate-700'
@@ -406,15 +411,16 @@ export const ProductDetailScreen: React.FC = () => {
               >
                 <div className="flex items-center justify-between mb-0.5">
                   <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
-                  <span className="text-[9px] text-emerald-400">يدوي</span>
+                  <span className="text-[9px] text-slate-400">قريباً</span>
                 </div>
                 <div className="font-bold">ليبيانا (Libyana)</div>
               </button>
 
               <button
                 type="button"
+                disabled
                 onClick={() => setPaymentMethod('almadar')}
-                className={`p-2.5 rounded-xl border text-right transition-all ${
+                className={`p-2.5 rounded-xl border text-right transition-all opacity-50 cursor-not-allowed ${
                   paymentMethod === 'almadar'
                     ? 'border-cyan-400 bg-cyan-500/10 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.2)]'
                     : 'border-slate-800 bg-slate-800/60 text-slate-300 hover:border-slate-700'
@@ -422,15 +428,16 @@ export const ProductDetailScreen: React.FC = () => {
               >
                 <div className="flex items-center justify-between mb-0.5">
                   <Smartphone className="w-3.5 h-3.5 text-blue-400" />
-                  <span className="text-[9px] text-blue-400">يدوي</span>
+                  <span className="text-[9px] text-slate-400">قريباً</span>
                 </div>
                 <div className="font-bold">المدار الجديد</div>
               </button>
 
               <button
                 type="button"
+                disabled
                 onClick={() => setPaymentMethod('bank_transfer')}
-                className={`p-2.5 rounded-xl border text-right transition-all ${
+                className={`p-2.5 rounded-xl border text-right transition-all opacity-50 cursor-not-allowed ${
                   paymentMethod === 'bank_transfer'
                     ? 'border-cyan-400 bg-cyan-500/10 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.2)]'
                     : 'border-slate-800 bg-slate-800/60 text-slate-300 hover:border-slate-700'
@@ -438,15 +445,16 @@ export const ProductDetailScreen: React.FC = () => {
               >
                 <div className="flex items-center justify-between mb-0.5">
                   <Building2 className="w-3.5 h-3.5 text-purple-400" />
-                  <span className="text-[9px] text-purple-400">يدوي</span>
+                  <span className="text-[9px] text-slate-400">قريباً</span>
                 </div>
                 <div className="font-bold">تحويل مصرفي</div>
               </button>
 
               <button
                 type="button"
+                disabled
                 onClick={() => setPaymentMethod('payoneer')}
-                className={`p-2.5 rounded-xl border text-right transition-all ${
+                className={`p-2.5 rounded-xl border text-right transition-all opacity-50 cursor-not-allowed ${
                   paymentMethod === 'payoneer'
                     ? 'border-cyan-400 bg-cyan-500/10 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.2)]'
                     : 'border-slate-800 bg-slate-800/60 text-slate-300 hover:border-slate-700'
@@ -454,7 +462,7 @@ export const ProductDetailScreen: React.FC = () => {
               >
                 <div className="flex items-center justify-between mb-0.5">
                   <Sparkles className="w-3.5 h-3.5 text-orange-400" />
-                  <span className="text-[9px] text-orange-400">يدوي</span>
+                  <span className="text-[9px] text-slate-400">قريباً</span>
                 </div>
                 <div className="font-bold">Payoneer</div>
               </button>
@@ -465,7 +473,7 @@ export const ProductDetailScreen: React.FC = () => {
               <div className="p-3 rounded-xl bg-amber-950/20 border border-amber-500/30 space-y-2 text-xs">
                 <div className="flex items-start gap-1.5 text-amber-300 text-[11px]">
                   <AlertCircle className="w-4 h-4 shrink-0 text-amber-400 mt-0.5" />
-                  <span>وسائل الدفع اليدوي معروضة للتجهيز فقط؛ لا تستخدمها الآن لأن إنشاء الطلب وتسليم المنتج غير مفعّلين.</span>
+                  <span>وسائل الدفع اليدوي غير متاحة في الإطلاق الأول؛ ATLOS هي وسيلة الدفع الرقمية عند تفعيلها.</span>
                 </div>
               </div>
             )}
@@ -490,6 +498,7 @@ export const ProductDetailScreen: React.FC = () => {
             <div className="flex items-center gap-3 w-full sm:w-auto">
               <button
                 type="button"
+                style={{ display: import.meta.env.DEV ? undefined : 'none' }}
                 onClick={handleSendAsGift}
                 className="flex-1 sm:flex-none px-5 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs sm:text-sm font-bold flex items-center justify-center gap-2 border border-slate-700 transition-colors"
               >

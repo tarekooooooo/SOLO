@@ -31,7 +31,9 @@ export const MerchantDashboardScreen: React.FC = () => {
     orders,
     setActiveScreen,
     setSelectedOrderForFulfillment,
-    showToast
+    showToast,
+    checkoutEnabled,
+    atlosEnabled
   } = useStore();
 
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -84,7 +86,11 @@ export const MerchantDashboardScreen: React.FC = () => {
   return (
     <div className="space-y-6 pb-12">
       <div role="status" className="rounded-xl border border-amber-500/40 bg-amber-950/30 px-4 py-3 text-xs leading-relaxed text-amber-200">
-        تُحفظ بيانات المنتج؛ تُرسل الأكواد إلى مسار خادمي خاص. التسليم والدفع ما زالا مغلقين، فلا تعتبر المنتج جاهزًا للبيع.
+        {atlosEnabled
+          ? 'تُحفظ المنتجات والأكواد في الخادم. يعتمد الدفع على تأكيد ATLOS الموقّع، ثم يكمل المدير تسليم الطلب من لوحة الطلبات.'
+          : checkoutEnabled
+            ? 'إعداد بوابة الدفع غير مكتمل؛ لا تنشر إعلاناً عن توفر الشراء حتى اجتياز المراجعة والتفعيل.'
+            : 'الشراء مغلق في وضع المعاينة. تُحفظ الأكواد في مسار خادمي خاص، ولا تُنشئ طلبات حتى المراجعة والتفعيل.'}
       </div>
       
       {/* Top Header matching Screen 10 in mockup */}
@@ -188,6 +194,7 @@ export const MerchantDashboardScreen: React.FC = () => {
         </button>
 
         <button
+          style={{ display: import.meta.env.DEV ? undefined : 'none' }}
           onClick={() => setActiveTab('api')}
           className={`flex-1 py-2 rounded-lg transition-all flex items-center justify-center gap-1.5 ${
             activeTab === 'api' ? 'bg-cyan-500 text-black shadow-md' : 'text-slate-400 hover:text-white'
@@ -309,7 +316,7 @@ export const MerchantDashboardScreen: React.FC = () => {
       )}
 
       {/* Tab 2: API & Automated Webhooks */}
-      {activeTab === 'api' && (
+      {import.meta.env.DEV && activeTab === 'api' && (
         <div className="p-6 rounded-3xl bg-[#0f1523] border border-cyan-500/20 space-y-5">
           <div className="flex items-center justify-between">
             <div>

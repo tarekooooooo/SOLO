@@ -1,19 +1,9 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': 'https://solostor.netlify.app',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-};
-const jsonHeaders = { ...corsHeaders, 'Content-Type': 'application/json' };
+import { getCorsHeaders } from '../_shared/cors.ts';
 const MAX_BODY_BYTES = 300_000;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 type JsonObject = Record<string, unknown>;
-
-function jsonResponse(status: number, body: JsonObject): Response {
-  return new Response(JSON.stringify(body), { status, headers: jsonHeaders });
-}
 
 async function readBoundedBody(req: Request): Promise<string> {
   const reader = req.body?.getReader();
@@ -40,6 +30,10 @@ async function readBoundedBody(req: Request): Promise<string> {
 }
 
 Deno.serve(async (req: Request) => {
+  const corsHeaders = getCorsHeaders(req.headers.get('origin'));
+  const jsonHeaders = { ...corsHeaders, 'Content-Type': 'application/json' };
+  const jsonResponse = (status: number, body: JsonObject): Response =>
+    new Response(JSON.stringify(body), { status, headers: jsonHeaders });
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return jsonResponse(405, { success: false, error: 'الطريقة غير مدعومة.' });
 
