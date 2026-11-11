@@ -94,6 +94,7 @@ export const Header: React.FC = () => {
 
           {/* متجر المنتجات المادية (CJ Dropshipping Physical Store) */}
           <button
+            style={{ display: import.meta.env.DEV ? undefined : 'none' }}
             onClick={() => {
               setStorefrontMode('physical');
               setActiveScreen('physical_store');
@@ -113,6 +114,7 @@ export const Header: React.FC = () => {
 
           {/* لوحة الإدمن وتعيين المساعدين (Admin Panel) */}
           <button
+            style={{ display: import.meta.env.DEV || currentUser?.role === 'admin' ? undefined : 'none' }}
             onClick={() => setActiveScreen('admin')}
             className={`whitespace-nowrap shrink-0 transition-all py-1 border-b-2 flex items-center gap-1.5 ${
               activeScreen === 'admin'
@@ -133,6 +135,7 @@ export const Header: React.FC = () => {
 
           {/* خدمة العملاء (Customer Support) */}
           <button
+            style={{ display: import.meta.env.DEV ? undefined : 'none' }}
             onClick={() => setActiveScreen('support')}
             className={`whitespace-nowrap shrink-0 transition-colors py-1 border-b-2 flex items-center gap-1.5 ${
               activeScreen === 'support'
@@ -151,6 +154,7 @@ export const Header: React.FC = () => {
 
           {/* إدارة المنتجات (لوحة التاجر) */}
           <button
+            style={{ display: import.meta.env.DEV || currentUser?.role === 'admin' ? undefined : 'none' }}
             onClick={() => setActiveScreen('merchant')}
             className={`whitespace-nowrap shrink-0 transition-colors py-1 border-b-2 ${
               activeScreen === 'merchant'
@@ -163,6 +167,7 @@ export const Header: React.FC = () => {
 
           {/* المحفظة */}
           <button
+            style={{ display: import.meta.env.DEV ? undefined : 'none' }}
             onClick={() => setActiveScreen('wallet')}
             className={`whitespace-nowrap shrink-0 transition-colors py-1 border-b-2 ${
               activeScreen === 'wallet'
@@ -214,6 +219,7 @@ export const Header: React.FC = () => {
 
           {/* صفحة الملف الشخصي (Profile Button) */}
           <button
+            style={{ display: import.meta.env.DEV ? undefined : 'none' }}
             onClick={() => setActiveScreen('profile')}
             className={`flex items-center gap-2 px-2.5 py-1.5 rounded-xl border transition-all ${
               activeScreen === 'profile'
@@ -229,7 +235,7 @@ export const Header: React.FC = () => {
           </button>
 
           {/* Currency Switcher */}
-          <div className="relative">
+          <div className="relative" style={{ display: import.meta.env.DEV ? undefined : 'none' }}>
             <button
               onClick={() => setShowCurrencyDropdown(!showCurrencyDropdown)}
               className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-xs font-semibold text-slate-200 hover:border-slate-700 transition-colors"
@@ -263,7 +269,7 @@ export const Header: React.FC = () => {
           </div>
 
           {/* View Mode Toggle (Desktop vs Mobile Simulation) */}
-          <div className="hidden sm:flex items-center bg-slate-900 p-0.5 rounded-lg border border-slate-800">
+          <div style={{ display: import.meta.env.DEV ? undefined : 'none' }} className="hidden sm:flex items-center bg-slate-900 p-0.5 rounded-lg border border-slate-800">
             <button
               onClick={() => setViewMode('desktop')}
               className={`p-1.5 rounded-md text-xs font-medium transition-colors flex items-center gap-1 ${
@@ -292,6 +298,7 @@ export const Header: React.FC = () => {
 
           {/* Quick Balance indicator */}
           <button
+            style={{ display: import.meta.env.DEV ? undefined : 'none' }}
             onClick={() => setActiveScreen('wallet')}
             className="hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 hover:border-cyan-500/40 transition-colors"
           >

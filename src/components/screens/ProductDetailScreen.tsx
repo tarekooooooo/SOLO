@@ -22,6 +22,7 @@ import { useStore } from '../../context/StoreContext';
 import { Order, Product, ProductPackage, PaymentMethod } from '../../types';
 import { SUPABASE_URL } from '../../config/api';
 import { loadAtlosWidget } from '../../lib/atlosWidget';
+import { supabaseClient } from '../../lib/supabase';
 
 function getAtlosIdempotencyKey(userId: string, scope: string): string {
   const storageKey = `solo_atlos_idempotency:${encodeURIComponent(userId)}:${encodeURIComponent(scope)}`;
@@ -47,6 +48,25 @@ function getAtlosIdempotencyKey(userId: string, scope: string): string {
   return key;
 }
 
+function getPaymentoIdempotencyKey(userId: string, scope: string): string {
+  const storageKey = `solo_paymento_idempotency:${encodeURIComponent(userId)}:${encodeURIComponent(scope)}`;
+  const maxAgeMs = 23 * 60 * 60 * 1000;
+  try {
+    const stored = JSON.parse(localStorage.getItem(storageKey) || 'null') as { key?: unknown; createdAt?: unknown } | null;
+    if (typeof stored?.key === 'string' && typeof stored.createdAt === 'number'
+      && Date.now() - stored.createdAt >= 0 && Date.now() - stored.createdAt < maxAgeMs) return stored.key;
+  } catch {
+    // Ignore malformed or unavailable browser storage and create a fresh key.
+  }
+  const key = crypto.randomUUID();
+  try {
+    localStorage.setItem(storageKey, JSON.stringify({ key, createdAt: Date.now() }));
+  } catch {
+    // The server still enforces one order per user and idempotency key.
+  }
+  return key;
+}
+
 export const ProductDetailScreen: React.FC = () => {
   const { 
     products, 
@@ -57,6 +77,7 @@ export const ProductDetailScreen: React.FC = () => {
     showToast,
     checkoutEnabled,
     atlosEnabled,
+    paymentoEnabled,
     atlosMerchantId,
     currentUser,
     createOrder,
@@ -70,13 +91,18 @@ export const ProductDetailScreen: React.FC = () => {
   const [isVerifyingId, setIsVerifyingId] = useState(false);
   const [idVerified, setIdVerified] = useState(false);
   const [isStartingAtlos, setIsStartingAtlos] = useState(false);
+  const [isStartingPaymento, setIsStartingPaymento] = useState(false);
   const [atlosOrder, setAtlosOrder] = useState<Order | null>(null);
   const [atlosPaymentSubmitted, setAtlosPaymentSubmitted] = useState(false);
   const atlosIdempotencyRef = useRef<{ scope: string; key: string } | null>(null);
 
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('libyana');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('atlos_crypto');
   const isDirectRecharge = product?.deliveryType === 'direct_id_recharge';
   const isManualPayment = ['libyana', 'almadar', 'bank_transfer', 'payoneer'].includes(paymentMethod);
+  const selectedGatewayEnabled = paymentMethod === 'atlos_crypto'
+    ? atlosEnabled
+    : paymentMethod === 'paymento_crypto' && paymentoEnabled;
+  const isStartingPayment = isStartingAtlos || isStartingPaymento;
 
   const handleVerifyPlayerId = () => {
     if (!playerId) return;
@@ -90,8 +116,8 @@ export const ProductDetailScreen: React.FC = () => {
       showToast('الشراء متوقف حاليًا. لن يتم إنشاء طلب أو فتح بوابة الدفع.');
       return;
     }
-    if (paymentMethod !== 'atlos_crypto') {
-      showToast('طريقة الدفع المحددة غير مهيأة للدفع الآلي بعد.');
+    if (paymentMethod !== 'atlos_crypto' && paymentMethod !== 'paymento_crypto') {
+      showToast('اختر إحدى بوابات الدفع الإلكتروني المتاحة.');
       return;
     }
     if (!currentUser) {
@@ -99,15 +125,65 @@ export const ProductDetailScreen: React.FC = () => {
       setActiveScreen('auth');
       return;
     }
+    if (isDirectRecharge) {
+      showToast('الشحن المباشر غير متاح حتى يكتمل التحقق من اللاعب والتسليم الآمن.');
+      return;
+    }
+
+    if (paymentMethod === 'paymento_crypto') {
+      if (!paymentoEnabled || !supabaseClient) {
+        showToast('بوابة Paymento غير جاهزة؛ لم يتم إنشاء طلب أو فتح الدفع.');
+        return;
+      }
+      if (isStartingPaymento) return;
+      const idempotencyKey = getPaymentoIdempotencyKey(currentUser.id, `${product.id}:${selectedPackage.id}`);
+      setIsStartingPaymento(true);
+      try {
+        const order = await createOrder({
+          customerId: currentUser.id,
+          customerName: currentUser.name,
+          customerEmail: currentUser.email,
+          customerPhone: currentUser.phone,
+          productId: product.id,
+          productName: product.titleAr,
+          packageId: selectedPackage.id,
+          packageName: selectedPackage.name,
+          platform: product.platform,
+          priceUSD: selectedPackage.priceUSD,
+          deliveryType: product.deliveryType,
+          targetPlayerId: playerId.trim() || undefined,
+          targetPlayerName: playerName.trim() || undefined,
+          isGift: false,
+          paymentMethod: 'paymento_crypto',
+          idempotencyKey,
+        });
+        if (!order) return;
+        const { data, error } = await supabaseClient.functions.invoke('paymento-create', {
+          body: { order_id: order.id },
+        });
+        if (error || data?.success !== true || typeof data.payment_url !== 'string') {
+          throw new Error('لم يؤكد الخادم جاهزية جلسة Paymento.');
+        }
+        const paymentUrl = new URL(data.payment_url);
+        if (paymentUrl.origin !== 'https://app.paymento.io'
+          || paymentUrl.pathname !== '/gateway'
+          || !paymentUrl.searchParams.get('token')) {
+          throw new Error('رابط الدفع المستلم غير صالح.');
+        }
+        window.location.assign(paymentUrl.toString());
+      } catch {
+        showToast('تعذر بدء الدفع عبر Paymento. لا تعتبر العودة من البوابة تأكيدًا للدفع؛ أعد المحاولة بالطلب نفسه أو اطلب المراجعة.');
+      } finally {
+        setIsStartingPaymento(false);
+      }
+      return;
+    }
+
     if (!atlosEnabled || !atlosMerchantId) {
       showToast('بوابة ATLOS غير جاهزة؛ لم يتم إنشاء طلب أو فتح الدفع.');
       return;
     }
     const merchantId = atlosMerchantId;
-    if (isDirectRecharge) {
-      showToast('الشحن المباشر غير متاح حتى يكتمل التحقق من اللاعب والتسليم الآمن.');
-      return;
-    }
     if (atlosPaymentSubmitted || isStartingAtlos) return;
 
     const scope = `${currentUser.id}:${product.id}:${selectedPackage.id}`;
@@ -206,9 +282,9 @@ export const ProductDetailScreen: React.FC = () => {
       {/* Main Product Card */}
       <div className="rounded-3xl bg-[#0f1523] border border-cyan-500/20 overflow-hidden shadow-2xl">
 
-          {!atlosEnabled && (
+          {(!checkoutEnabled || (!atlosEnabled && !paymentoEnabled)) && (
             <div role="status" className="mx-4 mt-4 rounded-xl border border-amber-500/40 bg-amber-950/30 px-3 py-2 text-xs leading-relaxed text-amber-200">
-              {checkoutEnabled ? 'بوابة الدفع غير جاهزة بعد؛ لا تدخل بيانات دفع.' : 'المتجر في وضع المعاينة. الشراء متوقف حاليًا لعدم اكتمال مخزون الأكواد والتسليم الآمن؛ لا تحوّل أموالًا ولا تدخل بيانات دفع.'}
+              {checkoutEnabled ? 'بوابات الدفع غير جاهزة بعد؛ لا تدخل بيانات دفع.' : 'المتجر في وضع المعاينة؛ الشراء متوقف حتى المراجعة والتفعيل النهائي. لا تحوّل أموالًا ولا تدخل بيانات دفع.'}
             </div>
           )}
         
@@ -231,7 +307,7 @@ export const ProductDetailScreen: React.FC = () => {
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <span className="text-[11px] text-cyan-300 bg-cyan-950/60 px-2 py-0.5 rounded-md border border-cyan-800/60">
-                  {product.packages.length} باقات متوفرة
+                  {product.packages.length} خيارات باقة
                 </span>
               </div>
               <h2 className="text-xl sm:text-2xl font-black text-white">{product.titleAr}</h2>
@@ -247,9 +323,13 @@ export const ProductDetailScreen: React.FC = () => {
           </p>
 
           {/* Integration status */}
-          <div role="status" className="p-3 rounded-xl bg-slate-900/80 border border-amber-700/50 flex items-center gap-2 text-xs text-amber-200">
+          <div role="status" className={`p-3 rounded-xl bg-slate-900/80 flex items-center gap-2 text-xs ${selectedGatewayEnabled ? 'border border-emerald-700/50 text-emerald-200' : 'border border-amber-700/50 text-amber-200'}`}>
             <Info className="w-4 h-4 shrink-0" />
-            <span>تأكيد الدفع والتسليم غير مفعّل حاليًا؛ لا تحوّل أموالًا ولا تعتبر المنتج متاحًا للشراء.</span>
+            <span>{selectedGatewayEnabled
+              ? `يؤكد الخادم الدفع عبر ${paymentMethod === 'paymento_crypto' ? 'Paymento' : 'ATLOS'}؛ وبعد التأكيد يراجع فريق المتجر التسليم الرقمي.`
+              : checkoutEnabled
+                ? 'اختر بوابة دفع مفعّلة. لا يتم إنشاء طلب أو فتح نافذة دفع قبل جاهزيتها.'
+                : 'المتجر في وضع المعاينة؛ الشراء مغلق حتى المراجعة والتفعيل النهائي. لا تحوّل أموالًا.'}</span>
           </div>
 
           {/* اختر الكمية (Select Package / Quantity - Exact layout from Screen 4) */}
@@ -259,7 +339,7 @@ export const ProductDetailScreen: React.FC = () => {
                 <Layers className="w-4 h-4 text-cyan-400" />
                 <span>اختر الكمية / الباقة:</span>
               </label>
-              <span className="text-[11px] text-slate-400">أسعار شاملة الضريبة</span>
+              <span className="text-[11px] text-slate-400">الأسعار بالدولار الأمريكي</span>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -308,7 +388,7 @@ export const ProductDetailScreen: React.FC = () => {
               <div className="flex items-center justify-between">
                 <label className="text-xs font-bold text-slate-200 flex items-center gap-1.5">
                   <User className="w-4 h-4 text-cyan-400" />
-                  <span>معرّف اللاعب (Player ID) المطلوب شحنه:</span>
+                  <span>معرّف اللاعب (ID) المطلوب للشحن اليدوي — إلزامي:</span>
                 </label>
                 <span className="text-[10px] text-emerald-400 flex items-center gap-1">
                   <ShieldCheck className="w-3.5 h-3.5" /> لا نطلب كلمة المرور أبداً
@@ -381,8 +461,8 @@ export const ProductDetailScreen: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setPaymentMethod('atlos_crypto')}
-                disabled={!atlosEnabled}
-                className={`p-2.5 rounded-xl border text-right transition-all ${!atlosEnabled ? 'opacity-50 cursor-not-allowed' : 'hover:border-cyan-600'} ${
+                disabled={!atlosEnabled || !checkoutEnabled}
+                className={`p-2.5 rounded-xl border text-right transition-all ${!atlosEnabled || !checkoutEnabled ? 'opacity-50 cursor-not-allowed' : 'hover:border-cyan-600'} ${
                   paymentMethod === 'atlos_crypto'
                     ? 'border-cyan-400 bg-cyan-500/10 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.2)]'
                     : 'border-slate-800 bg-slate-800/60 text-slate-300 hover:border-slate-700'
@@ -397,8 +477,26 @@ export const ProductDetailScreen: React.FC = () => {
 
               <button
                 type="button"
+                onClick={() => setPaymentMethod('paymento_crypto')}
+                disabled={!paymentoEnabled || !checkoutEnabled}
+                className={`p-2.5 rounded-xl border text-right transition-all ${!paymentoEnabled || !checkoutEnabled ? 'opacity-50 cursor-not-allowed' : 'hover:border-cyan-600'} ${
+                  paymentMethod === 'paymento_crypto'
+                    ? 'border-cyan-400 bg-cyan-500/10 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.2)]'
+                    : 'border-slate-800 bg-slate-800/60 text-slate-300 hover:border-slate-700'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-0.5">
+                  <Coins className="w-3.5 h-3.5 text-cyan-400" />
+                  <span className="text-[9px] text-slate-400">{paymentoEnabled ? 'متاحة' : 'غير مفعلة'}</span>
+                </div>
+                <div className="font-bold">بوابة Paymento المشفرة</div>
+              </button>
+
+              <button
+                type="button"
+                disabled
                 onClick={() => setPaymentMethod('libyana')}
-                className={`p-2.5 rounded-xl border text-right transition-all ${
+                className={`p-2.5 rounded-xl border text-right transition-all opacity-50 cursor-not-allowed ${
                   paymentMethod === 'libyana'
                     ? 'border-cyan-400 bg-cyan-500/10 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.2)]'
                     : 'border-slate-800 bg-slate-800/60 text-slate-300 hover:border-slate-700'
@@ -406,15 +504,16 @@ export const ProductDetailScreen: React.FC = () => {
               >
                 <div className="flex items-center justify-between mb-0.5">
                   <Smartphone className="w-3.5 h-3.5 text-emerald-400" />
-                  <span className="text-[9px] text-emerald-400">يدوي</span>
+                  <span className="text-[9px] text-slate-400">قريباً</span>
                 </div>
                 <div className="font-bold">ليبيانا (Libyana)</div>
               </button>
 
               <button
                 type="button"
+                disabled
                 onClick={() => setPaymentMethod('almadar')}
-                className={`p-2.5 rounded-xl border text-right transition-all ${
+                className={`p-2.5 rounded-xl border text-right transition-all opacity-50 cursor-not-allowed ${
                   paymentMethod === 'almadar'
                     ? 'border-cyan-400 bg-cyan-500/10 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.2)]'
                     : 'border-slate-800 bg-slate-800/60 text-slate-300 hover:border-slate-700'
@@ -422,15 +521,16 @@ export const ProductDetailScreen: React.FC = () => {
               >
                 <div className="flex items-center justify-between mb-0.5">
                   <Smartphone className="w-3.5 h-3.5 text-blue-400" />
-                  <span className="text-[9px] text-blue-400">يدوي</span>
+                  <span className="text-[9px] text-slate-400">قريباً</span>
                 </div>
                 <div className="font-bold">المدار الجديد</div>
               </button>
 
               <button
                 type="button"
+                disabled
                 onClick={() => setPaymentMethod('bank_transfer')}
-                className={`p-2.5 rounded-xl border text-right transition-all ${
+                className={`p-2.5 rounded-xl border text-right transition-all opacity-50 cursor-not-allowed ${
                   paymentMethod === 'bank_transfer'
                     ? 'border-cyan-400 bg-cyan-500/10 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.2)]'
                     : 'border-slate-800 bg-slate-800/60 text-slate-300 hover:border-slate-700'
@@ -438,15 +538,16 @@ export const ProductDetailScreen: React.FC = () => {
               >
                 <div className="flex items-center justify-between mb-0.5">
                   <Building2 className="w-3.5 h-3.5 text-purple-400" />
-                  <span className="text-[9px] text-purple-400">يدوي</span>
+                  <span className="text-[9px] text-slate-400">قريباً</span>
                 </div>
                 <div className="font-bold">تحويل مصرفي</div>
               </button>
 
               <button
                 type="button"
+                disabled
                 onClick={() => setPaymentMethod('payoneer')}
-                className={`p-2.5 rounded-xl border text-right transition-all ${
+                className={`p-2.5 rounded-xl border text-right transition-all opacity-50 cursor-not-allowed ${
                   paymentMethod === 'payoneer'
                     ? 'border-cyan-400 bg-cyan-500/10 text-cyan-300 shadow-[0_0_12px_rgba(6,182,212,0.2)]'
                     : 'border-slate-800 bg-slate-800/60 text-slate-300 hover:border-slate-700'
@@ -454,7 +555,7 @@ export const ProductDetailScreen: React.FC = () => {
               >
                 <div className="flex items-center justify-between mb-0.5">
                   <Sparkles className="w-3.5 h-3.5 text-orange-400" />
-                  <span className="text-[9px] text-orange-400">يدوي</span>
+                  <span className="text-[9px] text-slate-400">قريباً</span>
                 </div>
                 <div className="font-bold">Payoneer</div>
               </button>
@@ -465,7 +566,7 @@ export const ProductDetailScreen: React.FC = () => {
               <div className="p-3 rounded-xl bg-amber-950/20 border border-amber-500/30 space-y-2 text-xs">
                 <div className="flex items-start gap-1.5 text-amber-300 text-[11px]">
                   <AlertCircle className="w-4 h-4 shrink-0 text-amber-400 mt-0.5" />
-                  <span>وسائل الدفع اليدوي معروضة للتجهيز فقط؛ لا تستخدمها الآن لأن إنشاء الطلب وتسليم المنتج غير مفعّلين.</span>
+                  <span>وسائل الدفع اليدوية غير متاحة في الإطلاق الأول؛ استخدم بوابة إلكترونية تظهر «متاحة» فقط.</span>
                 </div>
               </div>
             )}
@@ -474,6 +575,12 @@ export const ProductDetailScreen: React.FC = () => {
               <div className="p-2.5 rounded-xl bg-cyan-950/30 border border-cyan-500/30 text-[11px] text-cyan-300 flex items-center gap-2">
                 <Coins className="w-4 h-4 text-cyan-400 shrink-0" />
                 <span>ATLOS غير مفعّلة؛ لا يتم إنشاء طلب أو قبول أو تأكيد أي دفعة حاليًا.</span>
+              </div>
+            )}
+            {paymentMethod === 'paymento_crypto' && !paymentoEnabled && (
+              <div className="p-2.5 rounded-xl bg-cyan-950/30 border border-cyan-500/30 text-[11px] text-cyan-300 flex items-center gap-2">
+                <Coins className="w-4 h-4 text-cyan-400 shrink-0" />
+                <span>Paymento غير مفعّلة؛ لن يُنشأ طلب أو تُفتح بوابة الدفع.</span>
               </div>
             )}
           </div>
@@ -490,6 +597,7 @@ export const ProductDetailScreen: React.FC = () => {
             <div className="flex items-center gap-3 w-full sm:w-auto">
               <button
                 type="button"
+                style={{ display: import.meta.env.DEV ? undefined : 'none' }}
                 onClick={handleSendAsGift}
                 className="flex-1 sm:flex-none px-5 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs sm:text-sm font-bold flex items-center justify-center gap-2 border border-slate-700 transition-colors"
               >
@@ -500,11 +608,11 @@ export const ProductDetailScreen: React.FC = () => {
               <button
                 type="button"
                 onClick={handleBuyNow}
-                disabled={!atlosEnabled || paymentMethod !== 'atlos_crypto' || isStartingAtlos || atlosPaymentSubmitted}
-                className={`flex-1 sm:flex-none px-7 py-3 rounded-xl bg-slate-700 text-slate-300 text-xs sm:text-sm font-bold flex items-center justify-center gap-2 ${!atlosEnabled || paymentMethod !== 'atlos_crypto' || isStartingAtlos || atlosPaymentSubmitted ? 'opacity-60 cursor-not-allowed' : 'hover:bg-cyan-800'}`}
+                disabled={!checkoutEnabled || !selectedGatewayEnabled || isStartingPayment || (paymentMethod === 'atlos_crypto' && atlosPaymentSubmitted)}
+                className={`flex-1 sm:flex-none px-7 py-3 rounded-xl bg-slate-700 text-slate-300 text-xs sm:text-sm font-bold flex items-center justify-center gap-2 ${!checkoutEnabled || !selectedGatewayEnabled || isStartingPayment || (paymentMethod === 'atlos_crypto' && atlosPaymentSubmitted) ? 'opacity-60 cursor-not-allowed' : 'hover:bg-cyan-800'}`}
               >
                 <Zap className="w-4 h-4" />
-                <span>{isStartingAtlos ? 'جارٍ فتح ATLOS...' : atlosPaymentSubmitted ? 'بانتظار تأكيد الخادم' : atlosEnabled && paymentMethod === 'atlos_crypto' ? 'الدفع عبر ATLOS' : 'الشراء غير متاح مؤقتًا'}</span>
+                <span>{isStartingPayment ? (paymentMethod === 'paymento_crypto' ? 'جارٍ فتح Paymento...' : 'جارٍ فتح ATLOS...') : paymentMethod === 'atlos_crypto' && atlosPaymentSubmitted ? 'بانتظار تأكيد الخادم' : selectedGatewayEnabled ? `الدفع عبر ${paymentMethod === 'paymento_crypto' ? 'Paymento' : 'ATLOS'}` : 'الشراء غير متاح مؤقتًا'}</span>
               </button>
             </div>
           </div>

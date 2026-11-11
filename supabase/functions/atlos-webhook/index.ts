@@ -1,5 +1,6 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { verifyAtlosSignature } from './signature.ts';
+import { isAtlosOverpayment } from './amount.ts';
 
 const MAX_BODY_BYTES = 64 * 1024;
 const ORDER_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -130,6 +131,33 @@ Deno.serve(async (req: Request) => {
     const serviceClient = createClient(supabaseUrl, serviceRoleKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
+    if (isAtlosOverpayment(orderAmount, paidAmount)) {
+      const { error: auditError } = await serviceClient.from('payment_events').upsert({
+        order_id: null,
+        provider: 'atlos',
+        provider_event_id: `atlos:${transactionId}`,
+        event_type: 'payment.confirmed',
+        sanitized_payload: {
+          ...sanitizedPayload,
+          verified_merchant_id: eventMerchantId,
+          review_reason: 'overpayment',
+        },
+        signature_valid: true,
+        processed: false,
+        error_message: 'ATLOS paid amount exceeds the recorded order amount; manual review is required.',
+      }, { onConflict: 'provider_event_id', ignoreDuplicates: true });
+      if (auditError) {
+        console.error('ATLOS overpayment could not be recorded for review.');
+        return jsonResponse(500, { success: false, error: 'Unable to record verified postback for review.' });
+      }
+      return jsonResponse(202, {
+        success: true,
+        processed: false,
+        review_required: true,
+        reason: 'Overpayment requires manual review.',
+      });
+    }
+
     const { data, error } = await serviceClient.rpc('process_atlos_postback', {
       p_transaction_id: transactionId,
       p_order_id: orderId,

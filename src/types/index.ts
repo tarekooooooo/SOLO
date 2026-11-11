@@ -178,6 +178,7 @@ export interface ShippingAddress {
 }
 
 export type PaymentMethod = 
+  | 'paymento_crypto'
   | 'atlos_crypto' 
   | 'libyana' 
   | 'almadar' 
@@ -188,7 +189,7 @@ export type PaymentMethod =
 export type PhysicalOrderStatus = 
   | 'pending' 
   | 'awaiting_manual_review'
-  | 'cj_syncing' 
+  | 'cj_syncing'
   | 'processing' 
   | 'shipped' 
   | 'delivered' 

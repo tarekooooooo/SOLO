@@ -6,15 +6,11 @@ import {
   CreditCard, 
   Coins, 
   Gift, 
-  Trophy, 
   Wrench, 
   ChevronLeft, 
   Star, 
   ArrowLeft,
   Flame,
-  CheckCircle,
-  ExternalLink,
-  Truck,
   Zap,
   Key
 } from 'lucide-react';
@@ -27,9 +23,8 @@ export const HomeScreen: React.FC = () => {
     setSelectedProductId, 
     setActiveScreen, 
     formatPrice, 
-    currency,
-    storefrontMode,
-    setStorefrontMode,
+    checkoutEnabled,
+    atlosEnabled,
     setIsApiModalOpen
   } = useStore();
 
@@ -42,8 +37,7 @@ export const HomeScreen: React.FC = () => {
     { id: 'game_currency', name: 'شحن العملات', icon: <Coins className="w-4 h-4" /> },
     { id: 'cards', name: 'البطاقات الرقمية', icon: <CreditCard className="w-4 h-4" /> },
     { id: 'games', name: 'الألعاب الكاملة', icon: <Gamepad2 className="w-4 h-4" /> },
-    { id: 'gifts', name: 'الهدايا الفورية', icon: <Gift className="w-4 h-4" /> },
-    { id: 'tournaments', name: 'البطولات', icon: <Trophy className="w-4 h-4" /> },
+    { id: 'gifts', name: 'البطاقات والهدايا الرقمية', icon: <Gift className="w-4 h-4" /> },
     { id: 'services', name: 'خدمات اللاعبين', icon: <Wrench className="w-4 h-4" /> },
   ];
 
@@ -70,41 +64,12 @@ export const HomeScreen: React.FC = () => {
   return (
     <div className="space-y-6 pb-12">
       
-      {/* Dual Homepages Switcher Banner */}
+      {/* Digital-only launch scope */}
       <div className="p-1.5 rounded-2xl bg-slate-900/90 border border-slate-800 flex items-center justify-between gap-2 shadow-lg">
-        <div className="flex items-center gap-2 flex-1">
-          <button
-            onClick={() => {
-              setStorefrontMode('digital');
-              setActiveScreen('home');
-            }}
-            className={`flex-1 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all ${
-              storefrontMode === 'digital'
-                ? 'bg-cyan-500 text-slate-950 shadow-[0_0_20px_rgba(6,182,212,0.5)]'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-            }`}
-          >
-            <Zap className="w-4 h-4" />
-            <span>🏪 المتجر الرقمي (شدات وبطاقات فمعية)</span>
-          </button>
-
-          <button
-            onClick={() => {
-              setStorefrontMode('physical');
-              setActiveScreen('physical_store');
-            }}
-            className={`flex-1 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all ${
-              storefrontMode === 'physical'
-                ? 'bg-gradient-to-r from-cyan-500 to-blue-600 text-white shadow-[0_0_20px_rgba(6,182,212,0.4)]'
-                : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-            }`}
-          >
-            <Truck className="w-4 h-4" />
-            <span>📦 متجر عتاد الألعاب المادي (CJ Dropshipping)</span>
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500 text-slate-950 font-extrabold mr-1">
-              جديد
-            </span>
-          </button>
+        <div className="flex items-center gap-3 px-3 py-2">
+          <Zap className="w-4 h-4 text-cyan-400 shrink-0" />
+          <span className="text-xs sm:text-sm font-bold text-white">المتجر الرقمي</span>
+          <span className="text-[10px] sm:text-xs text-slate-400">الإطلاق الأول: منتجات رقمية فقط؛ منتجات CJ المادية لاحقاً</span>
         </div>
 
         {/* API Settings Quick Access */}
@@ -141,18 +106,22 @@ export const HomeScreen: React.FC = () => {
         <div className="relative z-10 max-w-xl space-y-4">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-semibold">
             <Flame className="w-3.5 h-3.5 text-amber-400" />
-            <span>متجر SOLO قيد الإعداد</span>
+            <span>{atlosEnabled ? 'الدفع عبر ATLOS متاح' : 'متجر SOLO الرقمي قيد الإعداد'}</span>
           </div>
 
           <h2 className="text-2xl sm:text-4xl font-black text-white leading-tight">
-            نجهّز كتالوج SOLO <br className="hidden sm:inline" />
+            شحن وبطاقات رقمية <br className="hidden sm:inline" />
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-400 to-indigo-300">
-              لعرض منتجات موثّقة فقط
+              من متجر SOLO
             </span>
           </h2>
 
           <p className="text-xs sm:text-sm text-slate-300 leading-relaxed max-w-md">
-            لا توجد منتجات منشورة حاليًا. الدفع والتسليم متوقفان حتى اكتمال ربط المخزون وبوابات الدفع؛ لا تحوّل أموالًا.
+            {atlosEnabled
+              ? 'يمكنك اختيار باقة رقمية متاحة. يؤكد الخادم الدفع أولاً، ثم يراجع فريق المتجر تنفيذ الطلب وتسليمه.'
+              : checkoutEnabled
+                ? 'بوابة الدفع غير مكتملة بعد؛ لن يُنشأ طلب أو تُفتح نافذة دفع حتى اكتمال الإعداد.'
+                : 'الشراء متوقف في وضع المعاينة حتى اكتمال المراجعة والتفعيل النهائي؛ لا تحوّل أموالاً.'}
           </p>
 
           <div className="flex flex-wrap items-center gap-3 pt-2">
@@ -166,13 +135,7 @@ export const HomeScreen: React.FC = () => {
               <ArrowLeft className="w-4 h-4" />
             </button>
 
-            <button
-              onClick={() => setActiveScreen('physical_store')}
-              className="px-5 py-2.5 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-700 text-slate-200 font-semibold text-xs sm:text-sm flex items-center gap-2 transition-colors"
-            >
-              <Trophy className="w-4 h-4 text-amber-400" />
-              <span>حالة المنتجات المادية</span>
-            </button>
+            <span className="px-4 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-slate-300 text-xs sm:text-sm">مرحلة الإطلاق الأولى: منتجات رقمية فقط</span>
           </div>
         </div>
 
@@ -195,13 +158,7 @@ export const HomeScreen: React.FC = () => {
             <button
               key={cat.id}
               onClick={() => {
-                if (cat.id === 'tournaments') {
-                  setActiveScreen('tournaments');
-                } else if (cat.id === 'gifts') {
-                  setActiveScreen('gift');
-                } else {
-                  setSelectedCategory(cat.id);
-                }
+                setSelectedCategory(cat.id);
               }}
               className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-semibold whitespace-nowrap shrink-0 transition-all ${
                 selectedCategory === cat.id
@@ -295,8 +252,8 @@ export const HomeScreen: React.FC = () => {
                     </div>
 
                     <div className="absolute bottom-2.5 right-2.5 left-2.5 flex items-center justify-between text-xs text-white">
-                      <span className="text-[11px] text-amber-200 bg-amber-950/70 px-2 py-0.5 rounded border border-amber-800 font-semibold">
-                        الشراء متوقف مؤقتًا
+                      <span className={`text-[11px] px-2 py-0.5 rounded border font-semibold ${atlosEnabled ? 'text-emerald-200 bg-emerald-950/70 border-emerald-800' : 'text-amber-200 bg-amber-950/70 border-amber-800'}`}>
+                        {atlosEnabled ? 'الدفع عبر ATLOS متاح' : 'الشراء مغلق مؤقتًا'}
                       </span>
                     </div>
                   </div>
@@ -320,7 +277,7 @@ export const HomeScreen: React.FC = () => {
                   </div>
 
                   <div className="flex items-center gap-2">
-                    <button
+                    {import.meta.env.DEV && <button
                       onClick={(e) => {
                         e.stopPropagation();
                         setSelectedProductId(product.id);
@@ -330,7 +287,7 @@ export const HomeScreen: React.FC = () => {
                       title="إرسال كهدية"
                     >
                       <Gift className="w-4 h-4" />
-                    </button>
+                    </button>}
                     
                     <button
                       onClick={(e) => {

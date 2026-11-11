@@ -68,7 +68,7 @@ export const AdminFulfillmentScreen: React.FC = () => {
 
   const awaitingManualDigital = orders.filter((o) => o.status === 'awaiting_manual_review');
   const awaitingManualPhysical = physicalOrders.filter((o) => o.status === 'awaiting_manual_review');
-  const totalAwaitingManual = awaitingManualDigital.length + awaitingManualPhysical.length;
+  const totalAwaitingManual = awaitingManualDigital.length + (import.meta.env.DEV ? awaitingManualPhysical.length : 0);
 
   const filteredOrders = orders.filter((o) => {
     const matchesStatus = statusFilter === 'all' || o.status === statusFilter;
@@ -201,6 +201,7 @@ export const AdminFulfillmentScreen: React.FC = () => {
         </button>
 
         <button
+          style={{ display: import.meta.env.DEV ? undefined : 'none' }}
           onClick={() => setActiveAdminTab('cj_orders')}
           className={`flex-1 min-w-[140px] py-2.5 rounded-xl transition-all flex items-center justify-center gap-2 ${
             activeAdminTab === 'cj_orders'
@@ -235,6 +236,7 @@ export const AdminFulfillmentScreen: React.FC = () => {
         </button>
 
         <button
+          style={{ display: import.meta.env.DEV ? undefined : 'none' }}
           onClick={() => setActiveAdminTab('assistants')}
           className={`flex-1 min-w-[140px] py-2.5 rounded-xl transition-all flex items-center justify-center gap-2 ${
             activeAdminTab === 'assistants'
@@ -247,6 +249,7 @@ export const AdminFulfillmentScreen: React.FC = () => {
         </button>
 
         <button
+          style={{ display: import.meta.env.DEV ? undefined : 'none' }}
           onClick={() => setActiveAdminTab('support')}
           className={`flex-1 min-w-[140px] py-2.5 rounded-xl transition-all flex items-center justify-center gap-2 ${
             activeAdminTab === 'support'
@@ -466,7 +469,7 @@ export const AdminFulfillmentScreen: React.FC = () => {
       )}
 
       {/* TAB 2: STAFF & ASSISTANTS MANAGEMENT (تعيين مساعدين وموظفين) */}
-      {activeAdminTab === 'assistants' && (
+      {import.meta.env.DEV && activeAdminTab === 'assistants' && (
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-[#0f1523] border border-cyan-500/20">
             <div>
@@ -585,7 +588,7 @@ export const AdminFulfillmentScreen: React.FC = () => {
       )}
 
       {/* TAB: CJ DROPSHIPPING PHYSICAL ORDERS */}
-      {activeAdminTab === 'cj_orders' && (
+      {import.meta.env.DEV && activeAdminTab === 'cj_orders' && (
         <div className="space-y-4">
           {/* CJ Integration Banner */}
           <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-950/40 via-cyan-950/30 to-slate-900 border border-cyan-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -859,7 +862,7 @@ export const AdminFulfillmentScreen: React.FC = () => {
                 ))}
 
                 {/* 2. Physical Orders Awaiting Review */}
-                {awaitingManualPhysical.map((ord) => (
+                {import.meta.env.DEV && awaitingManualPhysical.map((ord) => (
                   <div
                     key={ord.id}
                     className="p-5 rounded-2xl bg-[#0f1523] border border-amber-500/30 shadow-lg space-y-4"
@@ -958,7 +961,7 @@ export const AdminFulfillmentScreen: React.FC = () => {
       )}
 
       {/* TAB 3: CUSTOMER SUPPORT & TICKETS (خدمة العملاء) */}
-      {activeAdminTab === 'support' && (
+      {import.meta.env.DEV && activeAdminTab === 'support' && (
         <CustomerSupportScreen />
       )}
 
